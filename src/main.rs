@@ -11,12 +11,7 @@ fn low_nibble(b: u8) -> u8 {
 }
 
 fn low_and_high_nibbles(b: u8) -> [u8; 2] {
-    [low_nibble(b), high_nibble(b)]
-}
-
-fn to_nibbles(b: u16) -> [u8; 4] {
-    let [x, y] = b.to_be_bytes();
-    [low_nibble(x), high_nibble(x), low_nibble(y), high_nibble(y)]
+    [high_nibble(b), low_nibble(b)]
 }
 
 #[derive(Debug)]
@@ -66,6 +61,10 @@ impl CHIP8 {
         self.display = [0u8; DISPLAY_SIZE];
     }
 
+    fn jump(&mut self, address: u8) {
+
+    }
+
     fn fetch(&mut self) -> [u8; 4] {
         let upc = self.pc as usize;
         let [fi, se] = low_and_high_nibbles(self.memory[upc]);
@@ -76,9 +75,44 @@ impl CHIP8 {
 
     fn execute(&mut self) {
         let instruction = self.fetch();
-        println!("{} {} {} {}", instruction[0], instruction[1], instruction[2], instruction[3]);
+        // N = immediate
+        // X, Y = register number (i.e. in 0XY0, X or Y could be 0-F)
+        //
         match instruction {
-            [_, _, _, _] => self.clear_screen(),
+            [0x0, 0x0, 0xE, 0x0] => self.clear_screen(),  // clear aka CLS
+            [0x0, 0x0, 0xE, 0xE] => todo!(),              // return (exit subroutine) aka RTS
+            [0x1, n1,  n2,  n3 ] => todo!(),              // jump NNN i.e. 12A0 = JUMP $2A8
+            [0x2, n1,  n2,  n3 ] => todo!(),              // NNN (subroutine call)
+            [0x3, x,   n1,  n2 ] => todo!(),              // if vx != NN then
+            [0x4, x,   n1,  n2 ] => todo!(),              // if vx == NN then
+            [0x5, x,   y,   0x0] => todo!(),              // if vx != vy then
+            [0x6, x,   n1,  n2 ] => todo!(),              // vx := NN
+            [0x7, x,   n1,  n2 ] => todo!(),              // vx += NN
+            [0x8, x,   y,   0x0] => todo!(),              // vx := vy
+            [0x8, x,   y,   0x1] => todo!(),              // vx |= vy (bitwise OR)
+            [0x8, x,   y,   0x2] => todo!(),              // vx &= vy (bitwise AND)
+            [0x8, x,   y,   0x3] => todo!(),              // vx ^= vy (bitwise XOR)
+            [0x8, x,   y,   0x4] => todo!(),              // vx += vy (vf = 1 on carry)
+            [0x8, x,   y,   0x5] => todo!(),              // vx -= vy (vf = 0 on borrow)
+            [0x8, x,   y,   0x6] => todo!(),              // vx >>= vy (vf = old least significant bit)
+            [0x8, x,   y,   0x7] => todo!(),              // vx =- vy (vf = 0 on borrow)
+            [0x8, x,   y,   0xE] => todo!(),              // vx <<= vy (vf = old most significant bit)
+            [0x9, x,   y,   0x0] => todo!(),              // if vx == vy then
+            [0xA, n1,  n2,  n3 ] => todo!(),              // i := NNN
+            [0xB, n1,  n2,  n3 ] => todo!(),              // jump0 NNN (jump to address NNN + v0)
+            [0xC, x,   n2,  n3 ] => todo!(),              // vx := random NN (random num 0-255 AND NN)
+            [0xD, x,   y,   n  ] => todo!(),              // sprite vx vy N (vf = 1 on collision)
+            [0xE, x,   0x9, 0xE] => todo!(),              // if vx -key then (is a key not pressed?)
+            [0xE, x,   0xA, 0x1] => todo!(),              // if vx key then (is a key pressed?)
+            [0xF, x,   0x0, 0x7] => todo!(),              // vx := delay
+            [0xF, x,   0x0, 0xA] => todo!(),              // vx := key (wait for a keypress)
+            [0xF, x,   0x1, 0x5] => todo!(),              // delay := vx
+            [0xF, x,   0x1, 0x8] => todo!(),              // buzzer := vx
+            [0xF, x,   0x1, 0xE] => todo!(),              // i += vx
+            [0xF, x,   0x2, 0x9] => todo!(),              // i := hex vx (set i to a hex char)
+            [0xF, x,   0x3, 0x3] => todo!(),              // bcd vx (decode vx into binary-coded decimal)
+            [0xF, x,   0x5, 0x5] => todo!(),              // save vx (save v0-vx to i through (i+x))
+            [0xF, x,   0x6, 0x5] => todo!(),              // load vx (load v0-vx to i through (i+x))
             _ => todo!(),
         }
     }
