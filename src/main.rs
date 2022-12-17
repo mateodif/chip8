@@ -1,3 +1,11 @@
+use std::ops::Add;
+use std::ops::Sub;
+use std::ops::BitOr;
+use std::ops::BitAnd;
+use std::ops::BitXor;
+use std::ops::Shr;
+use std::ops::Shl;
+
 const MEMORY_SIZE: usize = 4 * 1024;
 const DISPLAY_SIZE: usize = 64 * 32;
 const REGISTER_SIZE: usize = 16;
@@ -12,6 +20,14 @@ fn low_nibble(b: u8) -> u8 {
 
 fn low_and_high_nibbles(b: u8) -> [u8; 2] {
     [high_nibble(b), low_nibble(b)]
+}
+
+fn from_low_and_high(a: u8, b: u8) -> u8 {
+    a << 4 | b
+}
+
+fn return_second<T>(_: T, x: T) -> T {
+    x
 }
 
 #[derive(Debug)]
@@ -65,6 +81,18 @@ impl CHIP8 {
 
     }
 
+    fn set_register_to_immediate(&mut self, r: u8, n: u8) {
+        self.register[r as usize] = n;
+    }
+
+    fn sum_register_with_immediate(&mut self, r: u8, n: u8) {
+        self.register[r as usize] += n;
+    }
+
+    fn set_register_to_register(&mut self, r1: u8, r2: u8, op: fn(u8, u8) -> u8) {
+        self.register[r1 as usize] = op(self.register[r1 as usize], self.register[r2 as usize]);
+    }
+
     fn fetch(&mut self) -> [u8; 4] {
         let upc = self.pc as usize;
         let [fi, se] = low_and_high_nibbles(self.memory[upc]);
@@ -86,17 +114,46 @@ impl CHIP8 {
             [0x3, x,   n1,  n2 ] => todo!(),              // if vx != NN then
             [0x4, x,   n1,  n2 ] => todo!(),              // if vx == NN then
             [0x5, x,   y,   0x0] => todo!(),              // if vx != vy then
-            [0x6, x,   n1,  n2 ] => todo!(),              // vx := NN
-            [0x7, x,   n1,  n2 ] => todo!(),              // vx += NN
-            [0x8, x,   y,   0x0] => todo!(),              // vx := vy
-            [0x8, x,   y,   0x1] => todo!(),              // vx |= vy (bitwise OR)
-            [0x8, x,   y,   0x2] => todo!(),              // vx &= vy (bitwise AND)
-            [0x8, x,   y,   0x3] => todo!(),              // vx ^= vy (bitwise XOR)
-            [0x8, x,   y,   0x4] => todo!(),              // vx += vy (vf = 1 on carry)
-            [0x8, x,   y,   0x5] => todo!(),              // vx -= vy (vf = 0 on borrow)
-            [0x8, x,   y,   0x6] => todo!(),              // vx >>= vy (vf = old least significant bit)
-            [0x8, x,   y,   0x7] => todo!(),              // vx =- vy (vf = 0 on borrow)
-            [0x8, x,   y,   0xE] => todo!(),              // vx <<= vy (vf = old most significant bit)
+            [0x6, x,   n1,  n2 ] => {
+                self.set_register_to_immediate(x, from_low_and_high(n1, n2)) // vx := NN
+            },
+            [0x7, x,   n1,  n2 ] => {
+                self.sum_register_with_immediate(x, from_low_and_high(n1, n2)) // vx += NN
+            },
+            [0x8, x,   y,   0x0] => {
+                self.set_register_to_register(x, y, return_second) // vx := vy
+            }
+            [0x8, x,   y,   0x1] => {
+                self.set_register_to_register(x, y, u8::bitor) // vx |= vy (bitwise OR)
+            },
+            [0x8, x,   y,   0x2] => {
+                self.set_register_to_register(x, y, u8::bitand) // vx &= vy (bitwise AND)
+            },
+            [0x8, x,   y,   0x3] => {
+                self.set_register_to_register(x, y, u8::bitxor) // vx ^= vy (bitwise XOR)
+            },
+            [0x8, x,   y,   0x4] => {
+                // TODO: set carry
+                self.set_register_to_register(x, y, u8::add) // vx += vy (vf = 1 on carry)
+            },
+            [0x8, x,   y,   0x5] => {
+                // TODO: set borrow
+                self.set_register_to_register(x, y, u8::sub) // vx -= vy (vf = 0 on borrow)
+            }
+            [0x8, x,   y,   0x6] => {
+                // TODO: set least significant bit
+                self.set_register_to_register(x, y, u8::shr) // vx >>= vy (vf = old least significant bit)
+            },
+            [0x8, x,   y,   0x7] => {
+                // TODO: set borrow
+                let f = |x: u8, y: u8| -> u8 {
+                    u8::sub(y, x)
+                };
+                self.set_register_to_register(x, y, f) // vx =- vy (vf = 0 on borrow)
+            },
+            [0x8, x,   y,   0xE] => {
+                self.set_register_to_register(x, y, u8::shl) // vx <<= vy (vf = old most significant bit)
+            },
             [0x9, x,   y,   0x0] => todo!(),              // if vx == vy then
             [0xA, n1,  n2,  n3 ] => todo!(),              // i := NNN
             [0xB, n1,  n2,  n3 ] => todo!(),              // jump0 NNN (jump to address NNN + v0)
