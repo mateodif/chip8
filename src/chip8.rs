@@ -1,18 +1,20 @@
 #![allow(dead_code)]
 #![allow(unused_variables)]
-use std::ops::Add;
-use std::ops::Sub;
-use std::ops::BitOr;
-use std::ops::BitAnd;
-use std::ops::BitXor;
-use std::ops::Shr;
-use std::ops::Shl;
 use std::default::Default;
+use std::fs::read;
+use std::ops::Add;
+use std::ops::BitAnd;
+use std::ops::BitOr;
+use std::ops::BitXor;
+use std::ops::Shl;
+use std::ops::Shr;
+use std::ops::Sub;
+use std::path::Path;
 
-
-pub const MEMORY_SIZE: usize = 4 * 1024;
+pub const MEMORY_SIZE: usize = 4 * 1024; // 0x1000 directions, from 0x0 to 0xFFF.
 pub const DISPLAY_SIZE: usize = 64 * 32;
 pub const REGISTER_SIZE: usize = 16;
+pub const PROGRAM_MEMORY_START: usize = 0x200; // Programs usually start a 0x200.
 
 fn high_nibble(b: u8) -> u8 {
     (b >> 4) & 0x0F
