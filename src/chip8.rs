@@ -48,22 +48,22 @@ pub struct CHIP8 {
     sound_timer: u8,
 }
 
-impl Default for CHIP8{
+impl Default for CHIP8 {
     fn default() -> CHIP8 {
-    CHIP8 {
-        memory: [0u8; MEMORY_SIZE],
-        display: [0u8; DISPLAY_SIZE],
-        register: [0u8; REGISTER_SIZE],
-        stack: Vec::new(),
-        pc: 0x0,
-        index: 0x0,
-        delay_timer: 0x0,
-        sound_timer: 0x0,
-    }
+        CHIP8 {
+            memory: [0u8; MEMORY_SIZE],
+            display: [0u8; DISPLAY_SIZE],
+            register: [0u8; REGISTER_SIZE],
+            stack: Vec::new(),
+            pc: 0x0,
+            index: 0x0,
+            delay_timer: 0x0,
+            sound_timer: 0x0,
+        }
     }
 }
 impl CHIP8 {
-   pub fn load_font(&mut self) {
+    pub fn load_font(&mut self) {
         let font: [u8; 5 * 16] = [
             0xF0, 0x90, 0x90, 0x90, 0xF0, // 0
             0x20, 0x60, 0x20, 0x20, 0x70, // 1
