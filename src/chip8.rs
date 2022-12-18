@@ -32,10 +32,6 @@ fn from_low_and_high(a: u8, b: u8) -> u8 {
     a << 4 | b
 }
 
-fn return_second<T>(_: T, x: T) -> T {
-    x
-}
-
 #[derive(Debug)]
 pub struct CHIP8 {
     memory: [u8; MEMORY_SIZE],
