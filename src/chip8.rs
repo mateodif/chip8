@@ -25,6 +25,7 @@ fn low_nibble(b: u8) -> u8 {
 }
 
 fn low_and_high_nibbles(b: u8) -> [u8; 2] {
+    println!("nibbles_from_fun: {:?}", [high_nibble(b), low_nibble(b)]);
     [high_nibble(b), low_nibble(b)]
 }
 
@@ -119,6 +120,10 @@ impl CHIP8 {
         let [first_nibble, second_nibble] = low_and_high_nibbles(self.memory[upc]);
         let [third_nibble, fourth_nibble] = low_and_high_nibbles(self.memory[upc + 1]);
         self.pc += 2;
+        println!(
+            "The nibbles: {:?}",
+            [first_nibble, second_nibble, third_nibble, fourth_nibble]
+        );
         [first_nibble, second_nibble, third_nibble, fourth_nibble]
     }
 
@@ -127,6 +132,7 @@ impl CHIP8 {
         // N = immediate
         // X, Y = register number (i.e. in 0XY0, X or Y could be 0-F)
         //
+        println!("The instruction: {:?}", instruction);
         match instruction {
             [0x0, 0x0, 0xE, 0x0] => self.clear_screen(), // clear aka CLS
             [0x0, 0x0, 0xE, 0xE] => todo!(),             // return (exit subroutine) aka RTS
@@ -142,7 +148,7 @@ impl CHIP8 {
                 self.sum_register_with_immediate(x, from_low_and_high(n1, n2)) // vx += NN
             }
             [0x8, x, y, 0x0] => {
-                self.set_register_from_register(x, y, return_second) // vx := vy
+                self.set_register_from_register(x, y, |x, y| y) // vx := vy
             }
             [0x8, x, y, 0x1] => {
                 self.set_register_from_register(x, y, u8::bitor) // vx |= vy (bitwise OR)
@@ -242,6 +248,24 @@ mod test {
         cpu.pc = 0x200;
         cpu.load_from_slice(&program);
         cpu.execute();
+        assert_eq!(cpu.pc, 0x202);
+    }
+
+    #[test]
+    fn test_set_from_register() {
+        let base_program = [0x80, 0x00];
+        let mut cpu = CHIP8::default();
+        cpu.pc = 0x200;
+        for reg_x in 0x0..=0xF {
+            for reg_y in 0x0..=0xF {
+                println!("The regs: {reg_x}, {reg_y}");
+                let [first_nibble, second_nibble] = base_program;
+                let program = [first_nibble + reg_x, (second_nibble + reg_y) << 1];
+                println!("The first nibble: {:?}", program[0]);
+                cpu.load_from_slice(&program);
+                cpu.execute();
+            }
+        }
         assert_eq!(cpu.pc, 0x202);
     }
 }
