@@ -16,19 +16,22 @@ pub const DISPLAY_SIZE: usize = 64 * 32;
 pub const REGISTER_SIZE: usize = 16;
 pub const PROGRAM_MEMORY_START: usize = 0x200; // Programs usually start a 0x200.
 
+#[inline]
 fn high_nibble(b: u8) -> u8 {
     (b >> 4) & 0x0F
 }
 
+#[inline]
 fn low_nibble(b: u8) -> u8 {
     b & 0x0F
 }
 
+#[inline]
 fn low_and_high_nibbles(b: u8) -> [u8; 2] {
-    println!("nibbles_from_fun: {:?}", [high_nibble(b), low_nibble(b)]);
     [high_nibble(b), low_nibble(b)]
 }
 
+#[inline]
 fn from_low_and_high(a: u8, b: u8) -> u8 {
     a << 4 | b
 }
@@ -37,7 +40,7 @@ fn from_low_and_high(a: u8, b: u8) -> u8 {
 pub struct CHIP8 {
     memory: [u8; MEMORY_SIZE],
     display: [u8; DISPLAY_SIZE],
-    register: [u8; REGISTER_SIZE],
+    registers: [u8; REGISTER_SIZE],
     stack: Vec<u16>,
     pc: u16,
     index: u16,
@@ -50,7 +53,7 @@ impl Default for CHIP8 {
         CHIP8 {
             memory: [0u8; MEMORY_SIZE],
             display: [0u8; DISPLAY_SIZE],
-            register: [0u8; REGISTER_SIZE],
+            registers: [0u8; REGISTER_SIZE],
             stack: Vec::new(),
             pc: 0x0,
             index: 0x0,
@@ -100,19 +103,18 @@ impl CHIP8 {
     pub fn clear_screen(&mut self) {
         self.display = [0u8; DISPLAY_SIZE];
     }
-
     fn jump(&mut self, address: u8) {}
 
     fn set_register_to_immediate(&mut self, r: u8, n: u8) {
-        self.register[r as usize] = n;
+        self.registers[r as usize] = n;
     }
 
     fn sum_register_with_immediate(&mut self, r: u8, n: u8) {
-        self.register[r as usize] += n;
+        self.registers[r as usize] += n;
     }
 
     fn set_register_from_register(&mut self, r1: u8, r2: u8, op: fn(u8, u8) -> u8) {
-        self.register[r1 as usize] = op(self.register[r1 as usize], self.register[r2 as usize]);
+        self.registers[r1 as usize] = op(self.registers[r1 as usize], self.registers[r2 as usize]);
     }
 
     fn fetch(&mut self) -> [u8; 4] {
@@ -120,10 +122,6 @@ impl CHIP8 {
         let [first_nibble, second_nibble] = low_and_high_nibbles(self.memory[upc]);
         let [third_nibble, fourth_nibble] = low_and_high_nibbles(self.memory[upc + 1]);
         self.pc += 2;
-        println!(
-            "The nibbles: {:?}",
-            [first_nibble, second_nibble, third_nibble, fourth_nibble]
-        );
         [first_nibble, second_nibble, third_nibble, fourth_nibble]
     }
 
@@ -132,7 +130,6 @@ impl CHIP8 {
         // N = immediate
         // X, Y = register number (i.e. in 0XY0, X or Y could be 0-F)
         //
-        println!("The instruction: {:?}", instruction);
         match instruction {
             [0x0, 0x0, 0xE, 0x0] => self.clear_screen(), // clear aka CLS
             [0x0, 0x0, 0xE, 0xE] => todo!(),             // return (exit subroutine) aka RTS
@@ -253,19 +250,17 @@ mod test {
 
     #[test]
     fn test_set_from_register() {
-        let base_program = [0x80, 0x00];
         let mut cpu = CHIP8::default();
-        cpu.pc = 0x200;
         for reg_x in 0x0..=0xF {
             for reg_y in 0x0..=0xF {
-                println!("The regs: {reg_x}, {reg_y}");
-                let [first_nibble, second_nibble] = base_program;
-                let program = [first_nibble + reg_x, (second_nibble + reg_y) << 1];
-                println!("The first nibble: {:?}", program[0]);
+                cpu.pc = 0x200;
+                // The "program" is the LD instruction.
+                let program = [0x80 + reg_x, reg_y << 4];
                 cpu.load_from_slice(&program);
                 cpu.execute();
+                assert_eq!(cpu.pc, 0x202);
+                assert_eq!(cpu.registers[reg_x as usize], cpu.registers[reg_y as usize]);
             }
         }
-        assert_eq!(cpu.pc, 0x202);
     }
 }
