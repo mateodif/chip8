@@ -199,8 +199,8 @@ impl CHIP8 {
 
 #[cfg(test)]
 mod test {
-
     use super::*;
+    use itertools::Itertools;
     #[test]
     fn load() {
         let expected = [
@@ -260,6 +260,40 @@ mod test {
                 cpu.execute();
                 assert_eq!(cpu.pc, 0x202);
                 assert_eq!(cpu.registers[reg_x as usize], cpu.registers[reg_y as usize]);
+            }
+        }
+    }
+    #[test]
+    fn test_set_register_to_immediate() {
+        let mut cpu = CHIP8::default();
+        for reg_x in 0x0..=0xF {
+            for nibbles in (0x0..=0xF).permutations(2).collect_vec() {
+                cpu.pc = 0x200;
+                let [nibble_1, nibble_2] = &nibbles[..] else {panic!("Permutations are working weirdly")};
+                let expected_val = from_low_and_high(*nibble_1, *nibble_2);
+                let program = [0x60 + reg_x, expected_val];
+                cpu.load_from_slice(&program);
+                cpu.execute();
+                assert_eq!(cpu.pc, 0x202);
+                assert_eq!(cpu.registers[reg_x as usize], expected_val);
+            }
+        }
+    }
+
+    #[test]
+    fn test_sum_register_with_immediate() {
+        let mut cpu = CHIP8::default();
+        for reg_x in 0x0..=0xF {
+            for nibbles in (0x0..=0xF).permutations(2).collect_vec() {
+                cpu.pc = 0x200;
+                let [nibble_1, nibble_2] = &nibbles[..] else {panic!("Permutations are working weirdly")};
+                let expected_val = cpu.registers[reg_x as usize]
+                    .wrapping_add(from_low_and_high(*nibble_1, *nibble_2));
+                let program = [0x60 + reg_x, expected_val];
+                cpu.load_from_slice(&program);
+                cpu.execute();
+                assert_eq!(cpu.pc, 0x202);
+                assert_eq!(cpu.registers[reg_x as usize], expected_val);
             }
         }
     }
