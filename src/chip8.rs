@@ -36,6 +36,11 @@ fn from_low_and_high(a: u8, b: u8) -> u8 {
     a << 4 | b
 }
 
+#[inline]
+fn from_nibbles(a: u8, b: u8, c: u8, d: u8) -> u16 {
+    u16::from_be_bytes([from_low_and_high(a, b), from_low_and_high(c, d)])
+}
+
 #[derive(Debug)]
 pub struct CHIP8 {
     memory: [u8; MEMORY_SIZE],
@@ -129,15 +134,16 @@ impl CHIP8 {
         let instruction = self.fetch();
         // N = immediate
         // X, Y = register number (i.e. in 0XY0, X or Y could be 0-F)
-        //
         match instruction {
             [0x0, 0x0, 0xE, 0x0] => self.clear_screen(), // clear aka CLS
             [0x0, 0x0, 0xE, 0xE] => todo!(),             // return (exit subroutine) aka RTS
-            [0x1, n1, n2, n3] => todo!(),                // jump NNN i.e. 12A0 = JUMP $2A8
-            [0x2, n1, n2, n3] => todo!(),                // NNN (subroutine call)
-            [0x3, x, n1, n2] => todo!(),                 // if vx != NN then
-            [0x4, x, n1, n2] => todo!(),                 // if vx == NN then
-            [0x5, x, y, 0x0] => todo!(),                 // if vx != vy then
+            [0x1, n1, n2, n3] => {
+                self.pc = from_nibbles(0x0, n1, n2, n3) // jump NNN i.e. 12A0 = JUMP $2A8
+            }
+            [0x2, n1, n2, n3] => todo!(), // NNN (subroutine call)
+            [0x3, x, n1, n2] => todo!(),  // if vx != NN then
+            [0x4, x, n1, n2] => todo!(),  // if vx == NN then
+            [0x5, x, y, 0x0] => todo!(),  // if vx != vy then
             [0x6, x, n1, n2] => {
                 self.set_register_to_immediate(x, from_low_and_high(n1, n2)) // vx := NN
             }
@@ -296,5 +302,15 @@ mod test {
                 assert_eq!(cpu.registers[reg_x as usize], expected_val);
             }
         }
+    }
+
+    #[test]
+    fn test_jump_immediate() {
+        let program = [0x12, 0x22];
+        let mut cpu = CHIP8::default();
+        cpu.pc = 0x200;
+        cpu.load_from_slice(&program);
+        cpu.execute();
+        assert_eq!(cpu.pc, 0x222);
     }
 }
