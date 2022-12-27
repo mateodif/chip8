@@ -30,7 +30,6 @@ fn low_nibble(b: u8) -> u8 {
 fn low_and_high_nibbles(b: u8) -> [u8; 2] {
     [high_nibble(b), low_nibble(b)]
 }
-
 #[inline]
 fn from_low_and_high(a: u8, b: u8) -> u8 {
     a << 4 | b
@@ -41,6 +40,10 @@ fn from_nibbles(a: u8, b: u8, c: u8, d: u8) -> u16 {
     u16::from_be_bytes([from_low_and_high(a, b), from_low_and_high(c, d)])
 }
 
+#[inline]
+fn address_from_nibbles(a: u8, b: u8, c:u8) -> u16 {
+ ((a as u16) << 8) + ((b as u16) << 4) + (c as u16)
+}
 #[derive(Debug)]
 pub struct CHIP8 {
     memory: [u8; MEMORY_SIZE],
@@ -48,7 +51,7 @@ pub struct CHIP8 {
     registers: [u8; REGISTER_SIZE],
     stack: Vec<u16>,
     pc: u16,
-    sp: u16,
+    sp: u8,
     index: u16,
     delay_timer: u8,
     sound_timer: u8,
@@ -124,6 +127,12 @@ impl CHIP8 {
         self.registers[r1 as usize] = op(self.registers[r1 as usize], self.registers[r2 as usize]);
     }
 
+    fn call_sub_routine(&mut self, address: u16) {
+        self.sp += 1;
+        self.stack.push(self.pc);
+        self.pc = address;
+    }
+
     fn fetch(&mut self) -> [u8; 4] {
         let upc = self.pc as usize;
         let [first_nibble, second_nibble] = low_and_high_nibbles(self.memory[upc]);
@@ -142,10 +151,12 @@ impl CHIP8 {
             [0x1, n1, n2, n3] => {
                 self.pc = from_nibbles(0x0, n1, n2, n3) // jump NNN i.e. 12A0 = JUMP $2A8
             }
-            [0x2, n1, n2, n3] => todo!(), // NNN (subroutine call)
-            [0x3, x, n1, n2] => todo!(),  // if vx != NN then
-            [0x4, x, n1, n2] => todo!(),  // if vx == NN then
-            [0x5, x, y, 0x0] => todo!(),  // if vx != vy then
+            [0x2, n1, n2, n3] => {
+                self.call_sub_routine(address_from_nibbles(n1, n2, n3));
+            } // NNN (subroutine call)
+            [0x3, x, n1, n2] => todo!(),                 // if vx != NN then
+            [0x4, x, n1, n2] => todo!(),                 // if vx == NN then
+            [0x5, x, y, 0x0] => todo!(),                 // if vx != vy then
             [0x6, x, n1, n2] => {
                 self.set_register_to_immediate(x, from_low_and_high(n1, n2)) // vx := NN
             }
@@ -305,7 +316,6 @@ mod test {
             }
         }
     }
-
     #[test]
     fn test_jump_immediate() {
         let program = [0x12, 0x22];
@@ -314,5 +324,19 @@ mod test {
         cpu.load_from_slice(&program);
         cpu.execute();
         assert_eq!(cpu.pc, 0x222);
+    }
+    #[test]
+    fn test_call_subroutine() {
+        let mut cpu = CHIP8::default();
+        for nibbles in (0x0..=0xF).permutations(3).collect_vec() {
+            let [nibble_1, nibble_2, nibble_3] = &nibbles[..] else {panic!("Permutations are working weirdly")};
+            println!("{:?}", nibbles);
+            let call_instruction = [0x20 + nibble_1,  (nibble_2 << 4) + nibble_3];
+            cpu.pc = 0x200;
+            cpu.load_from_slice(&call_instruction);
+            cpu.execute();
+            assert_eq!(cpu.pc, address_from_nibbles(*nibble_1, *nibble_2, *nibble_3));
+            cpu.sp = 0;
+        }
     }
 }
