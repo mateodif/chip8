@@ -1,5 +1,6 @@
 #![allow(dead_code)]
 #![allow(unused_variables)]
+use rand::Rng;
 use std::default::Default;
 use std::fs::read;
 use std::ops::Add;
@@ -30,20 +31,17 @@ fn low_nibble(b: u8) -> u8 {
 fn low_and_high_nibbles(b: u8) -> [u8; 2] {
     [high_nibble(b), low_nibble(b)]
 }
+
 #[inline]
 fn from_low_and_high(a: u8, b: u8) -> u8 {
     a << 4 | b
 }
 
 #[inline]
-fn from_nibbles(a: u8, b: u8, c: u8, d: u8) -> u16 {
-    u16::from_be_bytes([from_low_and_high(a, b), from_low_and_high(c, d)])
+fn address_from_nibbles(a: u8, b: u8, c: u8) -> u16 {
+    ((a as u16) << 8) + ((b as u16) << 4) + (c as u16)
 }
 
-#[inline]
-fn address_from_nibbles(a: u8, b: u8, c:u8) -> u16 {
- ((a as u16) << 8) + ((b as u16) << 4) + (c as u16)
-}
 #[derive(Debug)]
 pub struct CHIP8 {
     memory: [u8; MEMORY_SIZE],
@@ -148,33 +146,32 @@ impl CHIP8 {
         match instruction {
             [0x0, 0x0, 0xE, 0x0] => self.clear_screen(), // clear aka CLS
             [0x0, 0x0, 0xE, 0xE] => todo!(),             // return (exit subroutine) aka RTS
-            [0x1, n1, n2, n3] => {
-                self.pc = from_nibbles(0x0, n1, n2, n3) // jump NNN i.e. 12A0 = JUMP $2A8
+            [0x1, n1, n2, n3] => self.pc = address_from_nibbles(n1, n2, n3), // jump NNN i.e. 12A0 = JUMP $2A8
+            [0x2, n1, n2, n3] => self.call_sub_routine(address_from_nibbles(n1, n2, n3)), // NNN (subroutine call)
+            [0x3, x, k1, k2] => {
+                // if vx == kk then
+                if self.registers[x as usize] == from_low_and_high(k1, k2) {
+                    self.pc += 2
+                }
             }
-            [0x2, n1, n2, n3] => {
-                self.call_sub_routine(address_from_nibbles(n1, n2, n3));
-            } // NNN (subroutine call)
-            [0x3, x, n1, n2] => todo!(),                 // if vx != NN then
-            [0x4, x, n1, n2] => todo!(),                 // if vx == NN then
-            [0x5, x, y, 0x0] => todo!(),                 // if vx != vy then
-            [0x6, x, n1, n2] => {
-                self.set_register_to_immediate(x, from_low_and_high(n1, n2)) // vx := NN
+            [0x4, x, k1, k2] => {
+                // if vx != kk then
+                if self.registers[x as usize] != from_low_and_high(k1, k2) {
+                    self.pc += 2
+                }
             }
-            [0x7, x, n1, n2] => {
-                self.sum_register_with_immediate(x, from_low_and_high(n1, n2)) // vx += NN
+            [0x5, x, y, 0x0] => {
+                // if vx == vy then
+                if self.registers[x as usize] == self.registers[y as usize] {
+                    self.pc += 2
+                }
             }
-            [0x8, x, y, 0x0] => {
-                self.set_register_from_register(x, y, |x, y| y) // vx := vy
-            }
-            [0x8, x, y, 0x1] => {
-                self.set_register_from_register(x, y, u8::bitor) // vx |= vy (bitwise OR)
-            }
-            [0x8, x, y, 0x2] => {
-                self.set_register_from_register(x, y, u8::bitand) // vx &= vy (bitwise AND)
-            }
-            [0x8, x, y, 0x3] => {
-                self.set_register_from_register(x, y, u8::bitxor) // vx ^= vy (bitwise XOR)
-            }
+            [0x6, x, n1, n2] => self.set_register_to_immediate(x, from_low_and_high(n1, n2)), // vx := NN
+            [0x7, x, n1, n2] => self.sum_register_with_immediate(x, from_low_and_high(n1, n2)), // vx += NN
+            [0x8, x, y, 0x0] => self.set_register_from_register(x, y, |x, y| y), // vx := vy
+            [0x8, x, y, 0x1] => self.set_register_from_register(x, y, u8::bitor), // vx |= vy (bitwise OR)
+            [0x8, x, y, 0x2] => self.set_register_from_register(x, y, u8::bitand), // vx &= vy (bitwise AND)
+            [0x8, x, y, 0x3] => self.set_register_from_register(x, y, u8::bitxor), // vx ^= vy (bitwise XOR)
             [0x8, x, y, 0x4] => {
                 // TODO: set carry
                 self.set_register_from_register(x, y, u8::add) // vx += vy (vf = 1 on carry)
@@ -193,13 +190,25 @@ impl CHIP8 {
                 self.set_register_from_register(x, y, f) // vx =- vy (vf = 0 on borrow)
             }
             [0x8, x, y, 0xE] => {
+                // TODO: set most significant bit?
                 self.set_register_from_register(x, y, u8::shl) // vx <<= vy (vf = old most significant bit)
             }
-            [0x9, x, y, 0x0] => todo!(),   // if vx == vy then
-            [0xA, n1, n2, n3] => todo!(),  // i := NNN
-            [0xB, n1, n2, n3] => todo!(),  // jump0 NNN (jump to address NNN + v0)
-            [0xC, x, n2, n3] => todo!(),   // vx := random NN (random num 0-255 AND NN)
-            [0xD, x, y, n] => todo!(),     // sprite vx vy N (vf = 1 on collision)
+            [0x9, x, y, 0x0] => {
+                // if vx != vy then
+                if self.registers[x as usize] != self.registers[y as usize] {
+                    self.pc += 2
+                }
+            }
+            [0xA, n1, n2, n3] => self.index = address_from_nibbles(n1, n2, n3), // i := NNN
+            [0xB, n1, n2, n3] => {
+                // jump0 NNN (jump to address NNN + v0)
+                self.pc = address_from_nibbles(n1, n2, n3) + (self.registers[0] as u16)
+            }
+            [0xC, x, k1, k2] => {
+                // vx := random kk (random num 0-255 AND kk)
+                self.registers[x as usize] &= rand::thread_rng().gen::<u8>();
+            }
+            [0xD, x, y, n] => todo!(), // sprite vx vy N (vf = 1 on collision)
             [0xE, x, 0x9, 0xE] => todo!(), // if vx -key then (is a key not pressed?)
             [0xE, x, 0xA, 0x1] => todo!(), // if vx key then (is a key pressed?)
             [0xF, x, 0x0, 0x7] => todo!(), // vx := delay
@@ -331,11 +340,14 @@ mod test {
         for nibbles in (0x0..=0xF).permutations(3).collect_vec() {
             let [nibble_1, nibble_2, nibble_3] = &nibbles[..] else {panic!("Permutations are working weirdly")};
             println!("{:?}", nibbles);
-            let call_instruction = [0x20 + nibble_1,  (nibble_2 << 4) + nibble_3];
+            let call_instruction = [0x20 + nibble_1, (nibble_2 << 4) + nibble_3];
             cpu.pc = 0x200;
             cpu.load_from_slice(&call_instruction);
             cpu.execute();
-            assert_eq!(cpu.pc, address_from_nibbles(*nibble_1, *nibble_2, *nibble_3));
+            assert_eq!(
+                cpu.pc,
+                address_from_nibbles(*nibble_1, *nibble_2, *nibble_3)
+            );
             cpu.sp = 0;
         }
     }
