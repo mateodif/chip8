@@ -3,13 +3,6 @@
 use rand::Rng;
 use std::default::Default;
 use std::fs::read;
-use std::ops::Add;
-use std::ops::BitAnd;
-use std::ops::BitOr;
-use std::ops::BitXor;
-use std::ops::Shl;
-use std::ops::Shr;
-use std::ops::Sub;
 use std::path::Path;
 
 pub const MEMORY_SIZE: usize = 4 * 1024; // 0x1000 directions, from 0x0 to 0xFFF.
@@ -42,6 +35,16 @@ fn address_from_nibbles(a: u8, b: u8, c: u8) -> u16 {
     ((a as u16) << 8) + ((b as u16) << 4) + (c as u16)
 }
 
+#[inline]
+fn least_significant_bit(a: u8) -> u8 {
+    a & 1
+}
+
+#[inline]
+fn most_significant_bit(a: u8) -> u8 {
+    1 << (a - 1)
+}
+
 #[derive(Debug)]
 pub struct CHIP8 {
     memory: [u8; MEMORY_SIZE],
@@ -70,7 +73,144 @@ impl Default for CHIP8 {
         }
     }
 }
+
 impl CHIP8 {
+    // Instructions
+
+    fn clear_display(&mut self) {
+        self.display = [0u8; DISPLAY_SIZE];
+    }
+
+    fn return_from_routine(&mut self) {
+        self.pc = self
+            .stack
+            .pop()
+            .expect("Trying to return from non-existent routine");
+        self.pc -= 1;
+    }
+
+    fn jump(&mut self, address: u16) {
+        self.pc = address;
+    }
+
+    fn call_sub_routine(&mut self, address: u16) {
+        self.sp += 1;
+        self.stack.push(self.pc);
+        self.pc = address;
+    }
+
+    fn skip_next_eq(&mut self, x: u8, val: u8) {
+        // if vx == kk then
+        if self.registers[x as usize] == val {
+            self.pc += 2
+        }
+    }
+
+    fn skip_next_not_eq(&mut self, x: u8, val: u8) {
+        // if vx != kk then
+        if self.registers[x as usize] != val {
+            self.pc += 2
+        }
+    }
+
+    fn skip_next_eq_reg(&mut self, x: u8, y: u8) {
+        // if vx == vy then
+        if self.registers[x as usize] == self.registers[y as usize] {
+            self.pc += 2
+        }
+    }
+
+    fn assign_reg_to_immediate(&mut self, r: u8, n: u8) {
+        self.registers[r as usize] = n;
+    }
+
+    fn sum_reg_with_immediate(&mut self, r: u8, n: u8) {
+        self.registers[r as usize] += n;
+    }
+
+    fn assign_reg(&mut self, r1: u8, r2: u8) {
+        self.registers[r1 as usize] = self.registers[r2 as usize]
+    }
+
+    fn bitor_assign(&mut self, r1: u8, r2: u8) {
+        self.registers[r1 as usize] |= self.registers[r2 as usize]
+    }
+
+    fn bitand_assign(&mut self, r1: u8, r2: u8) {
+        self.registers[r1 as usize] &= self.registers[r2 as usize]
+    }
+
+    fn bitxor_assign(&mut self, r1: u8, r2: u8) {
+        self.registers[r1 as usize] &= self.registers[r2 as usize]
+    }
+
+    fn bitadd_assign(&mut self, r1: u8, r2: u8) {
+        // The values of Vx and Vy are added together.
+        // If the result is greater than 8 bits (i.e., > 255,) VF is set to 1, otherwise 0.
+        // Only the lowest 8 bits of the result are kept, and stored in Vx.
+        let (val, curr_carry) = (self.registers[r1 as usize], self.registers[0xF]);
+        let (sum, new_carry) = val.carrying_add(self.registers[r2 as usize], curr_carry != 0);
+        self.registers[r1 as usize] = sum;
+        self.registers[0xF] = new_carry as u8;
+    }
+
+    fn bitsub_assign(&mut self, r1: u8, r2: u8) {
+        // If Vx > Vy, then VF is set to 1, otherwise 0.
+        // Then Vy is subtracted from Vx, and the results stored in Vx.
+        let (val, curr_borrow) = (self.registers[r1 as usize], self.registers[0xF]);
+        let (sub, new_borrow) = val.borrowing_sub(self.registers[r2 as usize], curr_borrow != 0);
+        self.registers[r1 as usize] = sub;
+        self.registers[0xF] = new_borrow as u8;
+    }
+
+    fn bitshr_assign(&mut self, r1: u8, r2: u8) {
+        // If the least-significant bit of Vx is 1, then VF is set to 1, otherwise 0.
+        // Then Vx is divided by 2.
+        if least_significant_bit(self.registers[r1 as usize]) == 1 {
+            self.registers[0xF] = 1;
+        }
+        self.registers[r1 as usize] >>= self.registers[r2 as usize];
+    }
+
+    fn bitsubn_assign(&mut self, r1: u8, r2: u8) {
+        // If Vy > Vx, then VF is set to 1, otherwise 0.
+        // Then Vx is subtracted from Vy, and the results stored in Vx.
+        let (val, curr_borrow) = (self.registers[r2 as usize], self.registers[0xF]);
+        let (sub, new_borrow) = val.borrowing_sub(self.registers[r1 as usize], curr_borrow != 0);
+        self.registers[r1 as usize] = sub;
+        self.registers[0xF] = (!new_borrow) as u8;
+    }
+
+    fn bitshl_assign(&mut self, r1: u8, r2: u8) {
+        // If the most-significant bit of Vx is 1, then VF is set to 1, otherwise to 0.
+        // Then Vx is multiplied by 2.
+        if most_significant_bit(self.registers[r1 as usize]) == 1 {
+            self.registers[0xF] = 1;
+        }
+        self.registers[r1 as usize] <<= self.registers[r2 as usize];
+    }
+
+    fn not_eq_regs(&mut self, x: u8, y: u8) {
+        // if vx != vy then
+        if self.registers[x as usize] != self.registers[y as usize] {
+            self.pc += 2;
+        }
+    }
+
+    fn assign_index_to(&mut self, address: u16) {
+        self.index = address;
+    }
+
+    fn jump_with_v0(&mut self, address: u16) {
+        self.jump(address + (self.registers[0] as u16))
+    }
+
+    fn assign_reg_randomly_with_and(&mut self, x: u8, val: u8) {
+        self.registers[x as usize] = rand::thread_rng().gen::<u8>() & val;
+    }
+
+    // Internals
+
     pub fn load_font(&mut self) {
         let font: [u8; 5 * 16] = [
             0xF0, 0x90, 0x90, 0x90, 0xF0, // 0
@@ -100,35 +240,13 @@ impl CHIP8 {
             self.memory[i + PROGRAM_MEMORY_START] = slice[i];
         }
     }
+
     pub fn load_from_file(&mut self, path: &Path) {
         let path = path.canonicalize().unwrap();
         let file = read(path).unwrap();
         for (i, _) in file.iter().enumerate() {
             self.memory[i + PROGRAM_MEMORY_START] = file[i];
         }
-    }
-
-    pub fn clear_screen(&mut self) {
-        self.display = [0u8; DISPLAY_SIZE];
-    }
-    fn jump(&mut self, address: u8) {}
-
-    fn set_register_to_immediate(&mut self, r: u8, n: u8) {
-        self.registers[r as usize] = n;
-    }
-
-    fn sum_register_with_immediate(&mut self, r: u8, n: u8) {
-        self.registers[r as usize] += n;
-    }
-
-    fn set_register_from_register(&mut self, r1: u8, r2: u8, op: fn(u8, u8) -> u8) {
-        self.registers[r1 as usize] = op(self.registers[r1 as usize], self.registers[r2 as usize]);
-    }
-
-    fn call_sub_routine(&mut self, address: u16) {
-        self.sp += 1;
-        self.stack.push(self.pc);
-        self.pc = address;
     }
 
     fn fetch(&mut self) -> [u8; 4] {
@@ -144,70 +262,28 @@ impl CHIP8 {
         // N = immediate
         // X, Y = register number (i.e. in 0XY0, X or Y could be 0-F)
         match instruction {
-            [0x0, 0x0, 0xE, 0x0] => self.clear_screen(), // clear aka CLS
-            [0x0, 0x0, 0xE, 0xE] => todo!(),             // return (exit subroutine) aka RTS
-            [0x1, n1, n2, n3] => self.pc = address_from_nibbles(n1, n2, n3), // jump NNN i.e. 12A0 = JUMP $2A8
-            [0x2, n1, n2, n3] => self.call_sub_routine(address_from_nibbles(n1, n2, n3)), // NNN (subroutine call)
-            [0x3, x, k1, k2] => {
-                // if vx == kk then
-                if self.registers[x as usize] == from_low_and_high(k1, k2) {
-                    self.pc += 2
-                }
-            }
-            [0x4, x, k1, k2] => {
-                // if vx != kk then
-                if self.registers[x as usize] != from_low_and_high(k1, k2) {
-                    self.pc += 2
-                }
-            }
-            [0x5, x, y, 0x0] => {
-                // if vx == vy then
-                if self.registers[x as usize] == self.registers[y as usize] {
-                    self.pc += 2
-                }
-            }
-            [0x6, x, n1, n2] => self.set_register_to_immediate(x, from_low_and_high(n1, n2)), // vx := NN
-            [0x7, x, n1, n2] => self.sum_register_with_immediate(x, from_low_and_high(n1, n2)), // vx += NN
-            [0x8, x, y, 0x0] => self.set_register_from_register(x, y, |x, y| y), // vx := vy
-            [0x8, x, y, 0x1] => self.set_register_from_register(x, y, u8::bitor), // vx |= vy (bitwise OR)
-            [0x8, x, y, 0x2] => self.set_register_from_register(x, y, u8::bitand), // vx &= vy (bitwise AND)
-            [0x8, x, y, 0x3] => self.set_register_from_register(x, y, u8::bitxor), // vx ^= vy (bitwise XOR)
-            [0x8, x, y, 0x4] => {
-                // TODO: set carry
-                self.set_register_from_register(x, y, u8::add) // vx += vy (vf = 1 on carry)
-            }
-            [0x8, x, y, 0x5] => {
-                // TODO: set borrow
-                self.set_register_from_register(x, y, u8::sub) // vx -= vy (vf = 0 on borrow)
-            }
-            [0x8, x, y, 0x6] => {
-                // TODO: set least significant bit
-                self.set_register_from_register(x, y, u8::shr) // vx >>= vy (vf = old least significant bit)
-            }
-            [0x8, x, y, 0x7] => {
-                // TODO: set borrow
-                let f = |x: u8, y: u8| -> u8 { u8::sub(y, x) };
-                self.set_register_from_register(x, y, f) // vx =- vy (vf = 0 on borrow)
-            }
-            [0x8, x, y, 0xE] => {
-                // TODO: set most significant bit?
-                self.set_register_from_register(x, y, u8::shl) // vx <<= vy (vf = old most significant bit)
-            }
-            [0x9, x, y, 0x0] => {
-                // if vx != vy then
-                if self.registers[x as usize] != self.registers[y as usize] {
-                    self.pc += 2
-                }
-            }
-            [0xA, n1, n2, n3] => self.index = address_from_nibbles(n1, n2, n3), // i := NNN
-            [0xB, n1, n2, n3] => {
-                // jump0 NNN (jump to address NNN + v0)
-                self.pc = address_from_nibbles(n1, n2, n3) + (self.registers[0] as u16)
-            }
-            [0xC, x, k1, k2] => {
-                // vx := random kk (random num 0-255 AND kk)
-                self.registers[x as usize] &= rand::thread_rng().gen::<u8>();
-            }
+            [0x0, 0x0, 0xE, 0x0] => self.clear_display(),
+            [0x0, 0x0, 0xE, 0xE] => self.return_from_routine(),
+            [0x1, n1, n2, n3] => self.jump(address_from_nibbles(n1, n2, n3)),
+            [0x2, n1, n2, n3] => self.call_sub_routine(address_from_nibbles(n1, n2, n3)),
+            [0x3, x, k1, k2] => self.skip_next_eq(x, from_low_and_high(k1, k2)),
+            [0x4, x, k1, k2] => self.skip_next_not_eq(x, from_low_and_high(k1, k2)),
+            [0x5, x, y, 0x0] => self.skip_next_eq_reg(x, y),
+            [0x6, x, k1, k2] => self.assign_reg_to_immediate(x, from_low_and_high(k1, k2)),
+            [0x7, x, k1, k2] => self.sum_reg_with_immediate(x, from_low_and_high(k1, k2)),
+            [0x8, x, y, 0x0] => self.assign_reg(x, y),
+            [0x8, x, y, 0x1] => self.bitor_assign(x, y),
+            [0x8, x, y, 0x2] => self.bitand_assign(x, y),
+            [0x8, x, y, 0x3] => self.bitxor_assign(x, y),
+            [0x8, x, y, 0x4] => self.bitadd_assign(x, y),
+            [0x8, x, y, 0x5] => self.bitsub_assign(x, y),
+            [0x8, x, y, 0x6] => self.bitshr_assign(x, y),
+            [0x8, x, y, 0x7] => self.bitsubn_assign(x, y),
+            [0x8, x, y, 0xE] => self.bitshl_assign(x, y),
+            [0x9, x, y, 0x0] => self.not_eq_regs(x, y),
+            [0xA, n1, n2, n3] => self.assign_index_to(address_from_nibbles(n1, n2, n3)),
+            [0xB, n1, n2, n3] => self.jump_with_v0(address_from_nibbles(n1, n2, n3)),
+            [0xC, x, k1, k2] => self.assign_reg_randomly_with_and(x, from_low_and_high(k1, k2)),
             [0xD, x, y, n] => todo!(), // sprite vx vy N (vf = 1 on collision)
             [0xE, x, 0x9, 0xE] => todo!(), // if vx -key then (is a key not pressed?)
             [0xE, x, 0xA, 0x1] => todo!(), // if vx key then (is a key pressed?)
