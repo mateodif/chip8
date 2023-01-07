@@ -41,8 +41,8 @@ fn from_nibbles(a: u8, b: u8, c: u8, d: u8) -> u16 {
 }
 
 #[inline]
-fn address_from_nibbles(a: u8, b: u8, c:u8) -> u16 {
- ((a as u16) << 8) + ((b as u16) << 4) + (c as u16)
+fn address_from_nibbles(a: u8, b: u8, c: u8) -> u16 {
+    ((a as u16) << 8) + ((b as u16) << 4) + (c as u16)
 }
 #[derive(Debug)]
 pub struct CHIP8 {
@@ -97,9 +97,15 @@ impl CHIP8 {
         }
     }
 
-    pub fn load_from_slice(&mut self, slice: &[u8]) {
+    // Load program from address, if not specified,
+    // default to 0x200.
+    pub fn load_from_slice(&mut self, slice: &[u8], address: Option<u16>) {
+        let start_address = match address {
+            Some(address) => address,
+            None => PROGRAM_MEMORY_START as u16,
+        };
         for (i, _) in slice.iter().enumerate() {
-            self.memory[i + PROGRAM_MEMORY_START] = slice[i];
+            self.memory[i + start_address as usize] = slice[i];
         }
     }
     pub fn load_from_file(&mut self, path: &Path) {
@@ -127,6 +133,10 @@ impl CHIP8 {
         self.registers[r1 as usize] = op(self.registers[r1 as usize], self.registers[r2 as usize]);
     }
 
+    fn return_from_sub_routine(&mut self) {
+        self.pc = self.stack.pop().unwrap();
+        self.sp -= 1;
+    }
     fn call_sub_routine(&mut self, address: u16) {
         self.sp += 1;
         self.stack.push(self.pc);
@@ -145,18 +155,19 @@ impl CHIP8 {
         let instruction = self.fetch();
         // N = immediate
         // X, Y = register number (i.e. in 0XY0, X or Y could be 0-F)
+        println!("Fetched instruction: {:?}", instruction);
         match instruction {
             [0x0, 0x0, 0xE, 0x0] => self.clear_screen(), // clear aka CLS
-            [0x0, 0x0, 0xE, 0xE] => todo!(),             // return (exit subroutine) aka RTS
+            [0x0, 0x0, 0xE, 0xE] => self.return_from_sub_routine(), // return (exit subroutine) aka RTS
             [0x1, n1, n2, n3] => {
                 self.pc = from_nibbles(0x0, n1, n2, n3) // jump NNN i.e. 12A0 = JUMP $2A8
             }
             [0x2, n1, n2, n3] => {
                 self.call_sub_routine(address_from_nibbles(n1, n2, n3));
             } // NNN (subroutine call)
-            [0x3, x, n1, n2] => todo!(),                 // if vx != NN then
-            [0x4, x, n1, n2] => todo!(),                 // if vx == NN then
-            [0x5, x, y, 0x0] => todo!(),                 // if vx != vy then
+            [0x3, x, n1, n2] => todo!(), // if vx != NN then
+            [0x4, x, n1, n2] => todo!(), // if vx == NN then
+            [0x5, x, y, 0x0] => todo!(), // if vx != vy then
             [0x6, x, n1, n2] => {
                 self.set_register_to_immediate(x, from_low_and_high(n1, n2)) // vx := NN
             }
@@ -262,7 +273,7 @@ mod test {
         let program = [0x00, 0xE0];
         let mut cpu = CHIP8::default();
         cpu.pc = 0x200;
-        cpu.load_from_slice(&program);
+        cpu.load_from_slice(&program, None);
         cpu.execute();
         assert_eq!(cpu.pc, 0x202);
     }
@@ -275,7 +286,7 @@ mod test {
                 cpu.pc = 0x200;
                 // The "program" is the LD instruction.
                 let program = [0x80 + reg_x, reg_y << 4];
-                cpu.load_from_slice(&program);
+                cpu.load_from_slice(&program, None);
                 cpu.execute();
                 assert_eq!(cpu.pc, 0x202);
                 assert_eq!(cpu.registers[reg_x as usize], cpu.registers[reg_y as usize]);
@@ -291,7 +302,7 @@ mod test {
                 let [nibble_1, nibble_2] = &nibbles[..] else {panic!("Permutations are working weirdly")};
                 let expected_val = from_low_and_high(*nibble_1, *nibble_2);
                 let program = [0x60 + reg_x, expected_val];
-                cpu.load_from_slice(&program);
+                cpu.load_from_slice(&program, None);
                 cpu.execute();
                 assert_eq!(cpu.pc, 0x202);
                 assert_eq!(cpu.registers[reg_x as usize], expected_val);
@@ -309,7 +320,7 @@ mod test {
                 let expected_val = cpu.registers[reg_x as usize]
                     .wrapping_add(from_low_and_high(*nibble_1, *nibble_2));
                 let program = [0x60 + reg_x, expected_val];
-                cpu.load_from_slice(&program);
+                cpu.load_from_slice(&program, None);
                 cpu.execute();
                 assert_eq!(cpu.pc, 0x202);
                 assert_eq!(cpu.registers[reg_x as usize], expected_val);
@@ -321,21 +332,29 @@ mod test {
         let program = [0x12, 0x22];
         let mut cpu = CHIP8::default();
         cpu.pc = 0x200;
-        cpu.load_from_slice(&program);
+        cpu.load_from_slice(&program, None);
         cpu.execute();
         assert_eq!(cpu.pc, 0x222);
     }
     #[test]
-    fn test_call_subroutine() {
+    fn test_call_and_return_subroutine() {
         let mut cpu = CHIP8::default();
         for nibbles in (0x0..=0xF).permutations(3).collect_vec() {
+            // First execute a call, and then return
+            // to the original position using return.
             let [nibble_1, nibble_2, nibble_3] = &nibbles[..] else {panic!("Permutations are working weirdly")};
-            println!("{:?}", nibbles);
-            let call_instruction = [0x20 + nibble_1,  (nibble_2 << 4) + nibble_3];
+            let call_instruction = [0x20 + nibble_1, (nibble_2 << 4) + nibble_3];
             cpu.pc = 0x200;
-            cpu.load_from_slice(&call_instruction);
+            cpu.load_from_slice(&call_instruction, None);
             cpu.execute();
-            assert_eq!(cpu.pc, address_from_nibbles(*nibble_1, *nibble_2, *nibble_3));
+            assert_eq!(
+                cpu.pc,
+                address_from_nibbles(*nibble_1, *nibble_2, *nibble_3)
+            );
+            let ret_instruction = [0x0, 0xEE];
+            cpu.load_from_slice(&ret_instruction, Some(address_from_nibbles(*nibble_1, *nibble_2, *nibble_3)));
+            cpu.execute();
+            assert_eq!(cpu.pc, 0x202);
             cpu.sp = 0;
         }
     }
