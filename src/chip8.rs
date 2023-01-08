@@ -2,12 +2,10 @@
 #![allow(unused_variables)]
 use std::default::Default;
 use std::fs::read;
-use std::ops::Add;
 use std::ops::BitAnd;
 use std::ops::BitOr;
 use std::ops::BitXor;
 use std::ops::Shl;
-use std::ops::Shr;
 use std::ops::Sub;
 use std::path::Path;
 
@@ -153,63 +151,94 @@ impl CHIP8 {
 
     pub fn execute(&mut self) {
         let instruction = self.fetch();
-        // N = immediate
-        // X, Y = register number (i.e. in 0XY0, X or Y could be 0-F)
+        // nnn or addr - A 12-bit value, the lowest 12 bits of the instruction
+        // n or nibble - A 4-bit value, the lowest 4 bits of the instruction
+        // x - A 4-bit value, the lower 4 bits of the high byte of the instruction
+        // y - A 4-bit value, the upper 4 bits of the low byte of the instruction
+        // kk or byte - An 8-bit value, the lowest 8 bits of the instruction
         println!("Fetched instruction: {:?}", instruction);
         match instruction {
             [0x0, 0x0, 0xE, 0x0] => self.clear_screen(), // clear aka CLS
             [0x0, 0x0, 0xE, 0xE] => self.return_from_sub_routine(), // return (exit subroutine) aka RTS
             [0x1, n1, n2, n3] => {
-                self.pc = from_nibbles(0x0, n1, n2, n3) // jump NNN i.e. 12A0 = JUMP $2A8
+                // jump NNN i.e. 12A0 = JUMP $2A8
+                self.pc = from_nibbles(0x0, n1, n2, n3)
             }
             [0x2, n1, n2, n3] => {
                 self.call_sub_routine(address_from_nibbles(n1, n2, n3));
-            } // NNN (subroutine call)
-            [0x3, x, n1, n2] => todo!(), // if vx != NN then
-            [0x4, x, n1, n2] => todo!(), // if vx == NN then
-            [0x5, x, y, 0x0] => todo!(), // if vx != vy then
-            [0x6, x, n1, n2] => {
-                self.set_register_to_immediate(x, from_low_and_high(n1, n2)) // vx := NN
             }
-            [0x7, x, n1, n2] => {
-                self.sum_register_with_immediate(x, from_low_and_high(n1, n2)) // vx += NN
+            [0x3, x, k1, k2] => todo!(), // if vx != NN then
+            [0x4, x, k1, k2] => todo!(), // if vx == NN then
+            [0x5, x, y, 0x0] => todo!(), // if vx != vy then
+            [0x6, x, k1, k2] => {
+                // vx := NN
+                self.set_register_to_immediate(x, from_low_and_high(k1, k2))
+            }
+            [0x7, x, k1, k2] => {
+                // vx += NN
+                self.sum_register_with_immediate(x, from_low_and_high(k1, k2))
             }
             [0x8, x, y, 0x0] => {
-                self.set_register_from_register(x, y, |x, y| y) // vx := vy
+                // vx := vy
+                self.set_register_from_register(x, y, |x, y| y)
             }
             [0x8, x, y, 0x1] => {
-                self.set_register_from_register(x, y, u8::bitor) // vx |= vy (bitwise OR)
+                // vx |= vy (bitwise OR)
+                self.set_register_from_register(x, y, u8::bitor)
             }
             [0x8, x, y, 0x2] => {
-                self.set_register_from_register(x, y, u8::bitand) // vx &= vy (bitwise AND)
+                // vx &= vy (bitwise AND)
+                self.set_register_from_register(x, y, u8::bitand)
             }
             [0x8, x, y, 0x3] => {
-                self.set_register_from_register(x, y, u8::bitxor) // vx ^= vy (bitwise XOR)
+                // vx ^= vy (bitwise XOR)
+                self.set_register_from_register(x, y, u8::bitxor)
             }
             [0x8, x, y, 0x4] => {
-                // TODO: set carry
-                self.set_register_from_register(x, y, u8::add) // vx += vy (vf = 1 on carry)
+                // The values of Vx and Vy are added together.
+                // If the result is greater than 8 bits (i.e., > 255,) VF is set to 1, otherwise 0.
+                // Only the lowest 8 bits of the result are kept, and stored in Vx.
+                let (first, second) = (self.registers[x as usize], self.registers[y as usize]);
+                let res = match first.checked_add(second) {
+                    Some(res) => res,
+                    None => {
+                        self.registers[0xF] = 1; // should we be setting carry before the register?
+                        ((first as u16) + (second as u16) >> 8) as u8
+                    }
+                };
+                self.registers[x as usize] = res;
             }
             [0x8, x, y, 0x5] => {
-                // TODO: set borrow
-                self.set_register_from_register(x, y, u8::sub) // vx -= vy (vf = 0 on borrow)
+                // If Vx > Vy, then VF is set to 1, otherwise 0.
+                // Then Vy is subtracted from Vx, and the results stored in Vx.
+                let (first, second) = (self.registers[x as usize], self.registers[y as usize]);
+                let res = match first.checked_sub(second) {
+                    Some(res) => {
+                        self.registers[0xF] = 1;
+                        res
+                    }
+                    None => first + (255 - second) + 1,
+                };
+                self.registers[x as usize] = res;
             }
             [0x8, x, y, 0x6] => {
-                // TODO: set least significant bit
-                self.set_register_from_register(x, y, u8::shr) // vx >>= vy (vf = old least significant bit)
+                // If the least-significant bit of Vx is 1, then VF is set to 1, otherwise 0.
+                // Then Vx is divided by 2.
             }
             [0x8, x, y, 0x7] => {
                 // TODO: set borrow
+                // vx =- vy (vf = 0 on borrow)
                 let f = |x: u8, y: u8| -> u8 { u8::sub(y, x) };
-                self.set_register_from_register(x, y, f) // vx =- vy (vf = 0 on borrow)
+                self.set_register_from_register(x, y, f)
             }
             [0x8, x, y, 0xE] => {
-                self.set_register_from_register(x, y, u8::shl) // vx <<= vy (vf = old most significant bit)
+                // vx <<= vy (vf = old most significant bit)
+                self.set_register_from_register(x, y, u8::shl)
             }
             [0x9, x, y, 0x0] => todo!(),   // if vx == vy then
             [0xA, n1, n2, n3] => todo!(),  // i := NNN
             [0xB, n1, n2, n3] => todo!(),  // jump0 NNN (jump to address NNN + v0)
-            [0xC, x, n2, n3] => todo!(),   // vx := random NN (random num 0-255 AND NN)
+            [0xC, x, k1, k2] => todo!(),   // vx := random NN (random num 0-255 AND NN)
             [0xD, x, y, n] => todo!(),     // sprite vx vy N (vf = 1 on collision)
             [0xE, x, 0x9, 0xE] => todo!(), // if vx -key then (is a key not pressed?)
             [0xE, x, 0xA, 0x1] => todo!(), // if vx key then (is a key pressed?)
@@ -352,7 +381,10 @@ mod test {
                 address_from_nibbles(*nibble_1, *nibble_2, *nibble_3)
             );
             let ret_instruction = [0x0, 0xEE];
-            cpu.load_from_slice(&ret_instruction, Some(address_from_nibbles(*nibble_1, *nibble_2, *nibble_3)));
+            cpu.load_from_slice(
+                &ret_instruction,
+                Some(address_from_nibbles(*nibble_1, *nibble_2, *nibble_3)),
+            );
             cpu.execute();
             assert_eq!(cpu.pc, 0x202);
             cpu.sp = 0;
