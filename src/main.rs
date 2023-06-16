@@ -1,3 +1,5 @@
+#![feature(bigint_helper_methods)]
+
 pub mod chip8;
 use crate::chip8::CHIP8;
 fn main() {

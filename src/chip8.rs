@@ -2,13 +2,6 @@
 #![allow(unused_variables)]
 use std::default::Default;
 use std::fs::read;
-use std::ops::Add;
-use std::ops::BitAnd;
-use std::ops::BitOr;
-use std::ops::BitXor;
-use std::ops::Shl;
-use std::ops::Shr;
-use std::ops::Sub;
 use std::path::Path;
 
 pub const MEMORY_SIZE: usize = 4 * 1024; // 0x1000 directions, from 0x0 to 0xFFF.
@@ -64,9 +57,9 @@ enum Instruction {
     XorRegisters { register1: u8, register2: u8 },
     AddRegisters { register1: u8, register2: u8 },
     SubRegisters { register1: u8, register2: u8 },
-    ShiftRight { register1: u8, register2: u8 },
+    ShiftRight { register: u8 },
     SubNRegisters { register1: u8, register2: u8 },
-    ShiftLeft { register1: u8, register2: u8 },
+    ShiftLeft { register: u8, },
     SkipIfRegisterNotEqual { register1: u8, register2: u8 },
     LoadAddressIntoIndex { address: u16 },
     JumpToAddressPlusV0 { address: u16 },
@@ -158,33 +151,6 @@ impl CHIP8 {
         }
     }
 
-    pub fn clear_screen(&mut self) {
-        self.display = [0u8; DISPLAY_SIZE];
-    }
-    fn jump(&mut self, address: u8) {}
-
-    fn set_register_to_immediate(&mut self, r: u8, n: u8) {
-        self.registers[r as usize] = n;
-    }
-
-    fn sum_register_with_immediate(&mut self, r: u8, n: u8) {
-        self.registers[r as usize] += n;
-    }
-
-    fn operate_and_set_register(&mut self, destination: u8, source: u8, op: fn(u8, u8) -> u8) {
-        self.registers[destination as usize] = op(self.registers[destination as usize], self.registers[source as usize]);
-    }
-
-    fn return_from_sub_routine(&mut self) {
-        self.pc = self.stack.pop().unwrap();
-        self.sp -= 1;
-    }
-    fn call_sub_routine(&mut self, address: u16) {
-        self.sp += 1;
-        self.stack.push(self.pc);
-        self.pc = address;
-    }
-
     fn fetch(&mut self) -> Instruction {
         let upc = self.pc as usize;
         let [first_nibble, second_nibble] = low_and_high_nibbles(self.memory[upc]);
@@ -208,9 +174,9 @@ impl CHIP8 {
             [0x8, x, y, 0x3] => Instruction::XorRegisters { register1: x, register2: y },
             [0x8, x, y, 0x4] => Instruction::AddRegisters { register1: x, register2: y },
             [0x8, x, y, 0x5] => Instruction::SubRegisters { register1: x, register2: y },
-            [0x8, x, y, 0x6] => Instruction::ShiftRight { register1: x, register2: y },
+            [0x8, x, _, 0x6] => Instruction::ShiftRight { register: x },
             [0x8, x, y, 0x7] => Instruction::SubNRegisters { register1: x, register2: y },
-            [0x8, x, y, 0xE] => Instruction::ShiftLeft { register1: x, register2: y },
+            [0x8, x, _, 0xE] => Instruction::ShiftLeft { register: x },
             [0x9, x, y, 0x0] => Instruction::SkipIfRegisterNotEqual { register1: x, register2: y },
             [0xA, n1, n2, n3] => Instruction::LoadAddressIntoIndex { address: address_from_nibbles(n1, n2, n3) },
             [0xB, n1, n2, n3] => Instruction::JumpToAddressPlusV0 { address: address_from_nibbles(n1, n2, n3) },
@@ -236,56 +202,64 @@ impl CHIP8 {
         let instruction = self.fetch();
         println!("Fetched instruction: {:?}", instruction);
         match instruction {
-            Instruction::ClearScreen => self.clear_screen(),
-            Instruction::ReturnFromSubroutine => self.return_from_sub_routine(),
+            Instruction::ClearScreen => {
+                self.display = [0u8; DISPLAY_SIZE];
+            },
+            Instruction::ReturnFromSubroutine => {
+                self.pc = self.stack.pop().unwrap();
+                self.sp -= 1;
+            },
             Instruction::Jump { address } => {
                 self.pc = address;
             },
             Instruction::CallSubroutine { address } => {
-                self.call_sub_routine(address);
+                self.sp += 1;
+                self.stack.push(self.pc);
+                self.pc = address;
             },
             Instruction::SkipIfEqual { register, byte } => todo!(),
             Instruction::SkipIfNotEqual { register, byte } => todo!(),
             Instruction::SkipIfRegisterEqual { register1, register2 } => todo!(),
             Instruction::LoadByteIntoRegister { register, byte } => {
-                self.set_register_to_immediate(register, byte);
+                self.registers[register as usize] = byte;
             },
             Instruction::AddByteToRegister { register, byte } => {
-                self.sum_register_with_immediate(register, byte);
+                self.registers[register as usize] += byte;
             },
             Instruction::LoadRegisterIntoRegister { register1, register2 } => {
-                self.operate_and_set_register(register1, register2, |register1, register2| register2);
+                self.registers[register1 as usize] = self.registers[register2 as usize];
             },
             Instruction::OrRegisters { register1, register2 } => {
-                self.operate_and_set_register(register1, register2, u8::bitor);
+                self.registers[register1 as usize] = self.registers[register1 as usize] | self.registers[register2 as usize];
             },
             Instruction::AndRegisters { register1, register2 } => {
-                self.operate_and_set_register(register1, register2, u8::bitand);
+                self.registers[register1 as usize] = self.registers[register1 as usize] & self.registers[register2 as usize];
             },
             Instruction::XorRegisters { register1, register2 } => {
-                self.operate_and_set_register(register1, register2, u8::bitxor);
+                self.registers[register1 as usize] = self.registers[register1 as usize] ^ self.registers[register2 as usize];
             },
             Instruction::AddRegisters { register1, register2 } => {
-                // TODO: set carry
-                self.operate_and_set_register(register1, register2, u8::add);
+                let (res, overflow) = self.registers[register1 as usize].carrying_add(self.registers[register2 as usize], false);
+                self.registers[register1 as usize] = res;
+                self.registers[0xF as usize] = if overflow { 1 } else { 0 };
             },
             Instruction::SubRegisters { register1, register2 } => {
-                // TODO: set borrow
-                self.operate_and_set_register(register1, register2, u8::sub);
+                let (res, borrow) = self.registers[register1 as usize].borrowing_sub(self.registers[register2 as usize], false);
+                self.registers[register1 as usize] = res;
+                self.registers[0xF as usize] = if borrow { 1 } else { 0 };
             },
-            Instruction::ShiftRight { register1, register2 } => {
-                // TODO: If the least-significant bit of Vx is 1, then VF is set to 1, otherwise 0
-                // THIS IS LIKELY NOT CORRECT!
-                self.operate_and_set_register(register1, register2, u8::shr);
+            Instruction::ShiftRight { register } => {
+                self.registers[register as usize] = register >> 1;
+                self.registers[0xF as usize] = register & 1;
             },
             Instruction::SubNRegisters { register1, register2 } => {
-                // TODO: set borrow
-                let f = |register1: u8, register2: u8| -> u8 { u8::sub(register1, register2) };
-                self.operate_and_set_register(register1, register2, f);
+                let (res, borrow) = self.registers[register2 as usize].borrowing_sub(self.registers[register1 as usize], false);
+                self.registers[register1 as usize] = res;
+                self.registers[0xF as usize] = if borrow { 1 } else { 0 };
             },
-            Instruction::ShiftLeft { register1, register2 } => {
-                // THIS IS LIKELY NOT CORRECT!
-                self.operate_and_set_register(register1, register2, u8::shl);
+            Instruction::ShiftLeft { register } => {
+                self.registers[register as usize] = register << 1;
+                self.registers[0xF as usize] = register >> 7;
             },
             Instruction::SkipIfRegisterNotEqual { register1, register2 } => todo!(),
             Instruction::LoadAddressIntoIndex { address } => todo!(),
