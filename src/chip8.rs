@@ -217,9 +217,21 @@ impl CHIP8 {
                 self.stack.push(self.pc);
                 self.pc = address;
             },
-            Instruction::SkipIfEqual { register, byte } => todo!(),
-            Instruction::SkipIfNotEqual { register, byte } => todo!(),
-            Instruction::SkipIfRegisterEqual { register1, register2 } => todo!(),
+            Instruction::SkipIfEqual { register, byte } => {
+                if self.registers[register as usize] == byte {
+                    self.pc += 2;
+                }
+            },
+            Instruction::SkipIfNotEqual { register, byte } => {
+                if self.registers[register as usize] != byte {
+                    self.pc += 2;
+                }
+            },
+            Instruction::SkipIfRegisterEqual { register1, register2 } => {
+                if self.registers[register1 as usize] == self.registers[register2 as usize] {
+                    self.pc += 2;
+                }
+            },
             Instruction::LoadByteIntoRegister { register, byte } => {
                 self.registers[register as usize] = byte;
             },
@@ -261,7 +273,11 @@ impl CHIP8 {
                 self.registers[register as usize] = register << 1;
                 self.registers[0xF as usize] = register >> 7;
             },
-            Instruction::SkipIfRegisterNotEqual { register1, register2 } => todo!(),
+            Instruction::SkipIfRegisterNotEqual { register1, register2 } => {
+                if self.registers[register1 as usize] != self.registers[register2 as usize] {
+                    self.pc += 2;
+                }
+            },
             Instruction::LoadAddressIntoIndex { address } => todo!(),
             Instruction::JumpToAddressPlusV0 { address } => todo!(),
             Instruction::RandomByteAndIntoRegister { register, byte } => todo!(),
