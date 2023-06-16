@@ -30,6 +30,7 @@ fn low_nibble(b: u8) -> u8 {
 fn low_and_high_nibbles(b: u8) -> [u8; 2] {
     [high_nibble(b), low_nibble(b)]
 }
+
 #[inline]
 fn from_low_and_high(a: u8, b: u8) -> u8 {
     a << 4 | b
@@ -44,6 +45,46 @@ fn from_nibbles(a: u8, b: u8, c: u8, d: u8) -> u16 {
 fn address_from_nibbles(a: u8, b: u8, c: u8) -> u16 {
     ((a as u16) << 8) + ((b as u16) << 4) + (c as u16)
 }
+
+#[derive(Debug)]
+enum Instruction {
+    NoOperation,
+    ClearScreen,
+    ReturnFromSubroutine,
+    Jump { address: u16 },
+    CallSubroutine { address: u16 },
+    SkipIfEqual { register: u8, byte: u8 },
+    SkipIfNotEqual { register: u8, byte: u8 },
+    SkipIfRegisterEqual { register1: u8, register2: u8 },
+    LoadByteIntoRegister { register: u8, byte: u8 },
+    AddByteToRegister { register: u8, byte: u8 },
+    LoadRegisterIntoRegister { register1: u8, register2: u8 },
+    OrRegisters { register1: u8, register2: u8 },
+    AndRegisters { register1: u8, register2: u8 },
+    XorRegisters { register1: u8, register2: u8 },
+    AddRegisters { register1: u8, register2: u8 },
+    SubRegisters { register1: u8, register2: u8 },
+    ShiftRight { register1: u8, register2: u8 },
+    SubNRegisters { register1: u8, register2: u8 },
+    ShiftLeft { register1: u8, register2: u8 },
+    SkipIfRegisterNotEqual { register1: u8, register2: u8 },
+    LoadAddressIntoIndex { address: u16 },
+    JumpToAddressPlusV0 { address: u16 },
+    RandomByteAndIntoRegister { register: u8, byte: u8 },
+    DrawSprite { register1: u8, register2: u8, nibble: u8 },
+    SkipIfKeyPressed { register: u8 },
+    SkipIfKeyNotPressed { register: u8 },
+    LoadDelayTimerIntoRegister { register: u8 },
+    WaitForKeyPress { register: u8 },
+    LoadRegisterIntoDelayTimer { register: u8 },
+    LoadRegisterIntoSoundTimer { register: u8 },
+    AddRegisterToIndex { register: u8 },
+    LoadFontLocationIntoIndex { register: u8 },
+    LoadBinaryCodedDecimalIntoMemory { register: u8 },
+    LoadRegistersIntoMemory { register: u8 },
+    LoadMemoryIntoRegisters { register: u8 },
+}
+
 #[derive(Debug)]
 pub struct CHIP8 {
     memory: [u8; MEMORY_SIZE],
@@ -72,6 +113,7 @@ impl Default for CHIP8 {
         }
     }
 }
+
 impl CHIP8 {
     pub fn load_font(&mut self) {
         let font: [u8; 5 * 16] = [
@@ -129,8 +171,8 @@ impl CHIP8 {
         self.registers[r as usize] += n;
     }
 
-    fn set_register_from_register(&mut self, r1: u8, r2: u8, op: fn(u8, u8) -> u8) {
-        self.registers[r1 as usize] = op(self.registers[r1 as usize], self.registers[r2 as usize]);
+    fn operate_and_set_register(&mut self, destination: u8, source: u8, op: fn(u8, u8) -> u8) {
+        self.registers[destination as usize] = op(self.registers[destination as usize], self.registers[source as usize]);
     }
 
     fn return_from_sub_routine(&mut self) {
@@ -143,86 +185,125 @@ impl CHIP8 {
         self.pc = address;
     }
 
-    fn fetch(&mut self) -> [u8; 4] {
+    fn fetch(&mut self) -> Instruction {
         let upc = self.pc as usize;
         let [first_nibble, second_nibble] = low_and_high_nibbles(self.memory[upc]);
         let [third_nibble, fourth_nibble] = low_and_high_nibbles(self.memory[upc + 1]);
         self.pc += 2;
-        [first_nibble, second_nibble, third_nibble, fourth_nibble]
+        [first_nibble, second_nibble, third_nibble, fourth_nibble];
+
+        match [first_nibble, second_nibble, third_nibble, fourth_nibble] {
+            [0x0, 0x0, 0xE, 0x0] => Instruction::ClearScreen,
+            [0x0, 0x0, 0xE, 0xE] => Instruction::ReturnFromSubroutine,
+            [0x1, n1, n2, n3] => Instruction::Jump { address: from_nibbles(0x0, n1, n2, n3) },
+            [0x2, n1, n2, n3] => Instruction::CallSubroutine { address: from_nibbles(0x0, n1, n2, n3) },
+            [0x3, x, n1, n2] => Instruction::SkipIfEqual { register: x, byte: from_low_and_high(n1, n2) },
+            [0x4, x, n1, n2] => Instruction::SkipIfNotEqual { register: x, byte: from_low_and_high(n1, n2) },
+            [0x5, x, y, 0x0] => Instruction::SkipIfRegisterEqual { register1: x, register2: y },
+            [0x6, x, n1, n2] => Instruction::LoadByteIntoRegister { register: x, byte: from_low_and_high(n1, n2) },
+            [0x7, x, n1, n2] => Instruction::AddByteToRegister { register: x, byte: from_low_and_high(n1, n2) },
+            [0x8, x, y, 0x0] => Instruction::LoadRegisterIntoRegister { register1: x, register2: y },
+            [0x8, x, y, 0x1] => Instruction::OrRegisters { register1: x, register2: y },
+            [0x8, x, y, 0x2] => Instruction::AndRegisters { register1: x, register2: y },
+            [0x8, x, y, 0x3] => Instruction::XorRegisters { register1: x, register2: y },
+            [0x8, x, y, 0x4] => Instruction::AddRegisters { register1: x, register2: y },
+            [0x8, x, y, 0x5] => Instruction::SubRegisters { register1: x, register2: y },
+            [0x8, x, y, 0x6] => Instruction::ShiftRight { register1: x, register2: y },
+            [0x8, x, y, 0x7] => Instruction::SubNRegisters { register1: x, register2: y },
+            [0x8, x, y, 0xE] => Instruction::ShiftLeft { register1: x, register2: y },
+            [0x9, x, y, 0x0] => Instruction::SkipIfRegisterNotEqual { register1: x, register2: y },
+            [0xA, n1, n2, n3] => Instruction::LoadAddressIntoIndex { address: address_from_nibbles(n1, n2, n3) },
+            [0xB, n1, n2, n3] => Instruction::JumpToAddressPlusV0 { address: address_from_nibbles(n1, n2, n3) },
+            [0xC, x, n2, n3] => Instruction::RandomByteAndIntoRegister { register: x, byte: from_low_and_high(n2, n3) },
+            [0xD, x, y, n] => Instruction::DrawSprite { register1: x, register2: y, nibble: n },
+            [0xE, x, 0x9, 0xE] => Instruction::SkipIfKeyPressed { register: x },
+            [0xE, x, 0xA, 0x1] => Instruction::SkipIfKeyNotPressed { register: x },
+            [0xF, x, 0x0, 0x7] => Instruction::LoadDelayTimerIntoRegister { register: x },
+            [0xF, x, 0x0, 0xA] => Instruction::WaitForKeyPress { register: x },
+            [0xF, x, 0x1, 0x5] => Instruction::LoadRegisterIntoDelayTimer { register: x },
+            [0xF, x, 0x1, 0x8] => Instruction::LoadRegisterIntoSoundTimer { register: x },
+            [0xF, x, 0x1, 0xE] => Instruction::AddRegisterToIndex { register: x },
+            [0xF, x, 0x2, 0x9] => Instruction::LoadFontLocationIntoIndex { register: x },
+            [0xF, x, 0x3, 0x3] => Instruction::LoadBinaryCodedDecimalIntoMemory { register: x },
+            [0xF, x, 0x5, 0x5] => Instruction::LoadRegistersIntoMemory { register: x },
+            [0xF, x, 0x6, 0x5] => Instruction::LoadMemoryIntoRegisters { register: x },
+            _ => panic!("Unknown instruction"),
+        }
+
     }
 
     pub fn execute(&mut self) {
         let instruction = self.fetch();
-        // N = immediate
-        // X, Y = register number (i.e. in 0XY0, X or Y could be 0-F)
         println!("Fetched instruction: {:?}", instruction);
         match instruction {
-            [0x0, 0x0, 0xE, 0x0] => self.clear_screen(), // clear aka CLS
-            [0x0, 0x0, 0xE, 0xE] => self.return_from_sub_routine(), // return (exit subroutine) aka RTS
-            [0x1, n1, n2, n3] => {
-                self.pc = from_nibbles(0x0, n1, n2, n3) // jump NNN i.e. 12A0 = JUMP $2A8
-            }
-            [0x2, n1, n2, n3] => {
-                self.call_sub_routine(address_from_nibbles(n1, n2, n3));
-            } // NNN (subroutine call)
-            [0x3, x, n1, n2] => todo!(), // if vx != NN then
-            [0x4, x, n1, n2] => todo!(), // if vx == NN then
-            [0x5, x, y, 0x0] => todo!(), // if vx != vy then
-            [0x6, x, n1, n2] => {
-                self.set_register_to_immediate(x, from_low_and_high(n1, n2)) // vx := NN
-            }
-            [0x7, x, n1, n2] => {
-                self.sum_register_with_immediate(x, from_low_and_high(n1, n2)) // vx += NN
-            }
-            [0x8, x, y, 0x0] => {
-                self.set_register_from_register(x, y, |x, y| y) // vx := vy
-            }
-            [0x8, x, y, 0x1] => {
-                self.set_register_from_register(x, y, u8::bitor) // vx |= vy (bitwise OR)
-            }
-            [0x8, x, y, 0x2] => {
-                self.set_register_from_register(x, y, u8::bitand) // vx &= vy (bitwise AND)
-            }
-            [0x8, x, y, 0x3] => {
-                self.set_register_from_register(x, y, u8::bitxor) // vx ^= vy (bitwise XOR)
-            }
-            [0x8, x, y, 0x4] => {
+            Instruction::ClearScreen => self.clear_screen(),
+            Instruction::ReturnFromSubroutine => self.return_from_sub_routine(),
+            Instruction::Jump { address } => {
+                self.pc = address;
+            },
+            Instruction::CallSubroutine { address } => {
+                self.call_sub_routine(address);
+            },
+            Instruction::SkipIfEqual { register, byte } => todo!(),
+            Instruction::SkipIfNotEqual { register, byte } => todo!(),
+            Instruction::SkipIfRegisterEqual { register1, register2 } => todo!(),
+            Instruction::LoadByteIntoRegister { register, byte } => {
+                self.set_register_to_immediate(register, byte);
+            },
+            Instruction::AddByteToRegister { register, byte } => {
+                self.sum_register_with_immediate(register, byte);
+            },
+            Instruction::LoadRegisterIntoRegister { register1, register2 } => {
+                self.operate_and_set_register(register1, register2, |register1, register2| register2);
+            },
+            Instruction::OrRegisters { register1, register2 } => {
+                self.operate_and_set_register(register1, register2, u8::bitor);
+            },
+            Instruction::AndRegisters { register1, register2 } => {
+                self.operate_and_set_register(register1, register2, u8::bitand);
+            },
+            Instruction::XorRegisters { register1, register2 } => {
+                self.operate_and_set_register(register1, register2, u8::bitxor);
+            },
+            Instruction::AddRegisters { register1, register2 } => {
                 // TODO: set carry
-                self.set_register_from_register(x, y, u8::add) // vx += vy (vf = 1 on carry)
-            }
-            [0x8, x, y, 0x5] => {
+                self.operate_and_set_register(register1, register2, u8::add);
+            },
+            Instruction::SubRegisters { register1, register2 } => {
                 // TODO: set borrow
-                self.set_register_from_register(x, y, u8::sub) // vx -= vy (vf = 0 on borrow)
-            }
-            [0x8, x, y, 0x6] => {
-                // TODO: set least significant bit
-                self.set_register_from_register(x, y, u8::shr) // vx >>= vy (vf = old least significant bit)
-            }
-            [0x8, x, y, 0x7] => {
+                self.operate_and_set_register(register1, register2, u8::sub);
+            },
+            Instruction::ShiftRight { register1, register2 } => {
+                // TODO: If the least-significant bit of Vx is 1, then VF is set to 1, otherwise 0
+                // THIS IS LIKELY NOT CORRECT!
+                self.operate_and_set_register(register1, register2, u8::shr);
+            },
+            Instruction::SubNRegisters { register1, register2 } => {
                 // TODO: set borrow
-                let f = |x: u8, y: u8| -> u8 { u8::sub(y, x) };
-                self.set_register_from_register(x, y, f) // vx =- vy (vf = 0 on borrow)
-            }
-            [0x8, x, y, 0xE] => {
-                self.set_register_from_register(x, y, u8::shl) // vx <<= vy (vf = old most significant bit)
-            }
-            [0x9, x, y, 0x0] => todo!(),   // if vx == vy then
-            [0xA, n1, n2, n3] => todo!(),  // i := NNN
-            [0xB, n1, n2, n3] => todo!(),  // jump0 NNN (jump to address NNN + v0)
-            [0xC, x, n2, n3] => todo!(),   // vx := random NN (random num 0-255 AND NN)
-            [0xD, x, y, n] => todo!(),     // sprite vx vy N (vf = 1 on collision)
-            [0xE, x, 0x9, 0xE] => todo!(), // if vx -key then (is a key not pressed?)
-            [0xE, x, 0xA, 0x1] => todo!(), // if vx key then (is a key pressed?)
-            [0xF, x, 0x0, 0x7] => todo!(), // vx := delay
-            [0xF, x, 0x0, 0xA] => todo!(), // vx := key (wait for a keypress)
-            [0xF, x, 0x1, 0x5] => todo!(), // delay := vx
-            [0xF, x, 0x1, 0x8] => todo!(), // buzzer := vx
-            [0xF, x, 0x1, 0xE] => todo!(), // i += vx
-            [0xF, x, 0x2, 0x9] => todo!(), // i := hex vx (set i to a hex char)
-            [0xF, x, 0x3, 0x3] => todo!(), // bcd vx (decode vx into binary-coded decimal)
-            [0xF, x, 0x5, 0x5] => todo!(), // save vx (save v0-vx to i through (i+x))
-            [0xF, x, 0x6, 0x5] => todo!(), // load vx (load v0-vx to i through (i+x))
-            _ => todo!(),
+                let f = |register1: u8, register2: u8| -> u8 { u8::sub(register1, register2) };
+                self.operate_and_set_register(register1, register2, f);
+            },
+            Instruction::ShiftLeft { register1, register2 } => {
+                // THIS IS LIKELY NOT CORRECT!
+                self.operate_and_set_register(register1, register2, u8::shl);
+            },
+            Instruction::SkipIfRegisterNotEqual { register1, register2 } => todo!(),
+            Instruction::LoadAddressIntoIndex { address } => todo!(),
+            Instruction::JumpToAddressPlusV0 { address } => todo!(),
+            Instruction::RandomByteAndIntoRegister { register, byte } => todo!(),
+            Instruction::DrawSprite { register1, register2, nibble } => todo!(),
+            Instruction::SkipIfKeyPressed { register } => todo!(),
+            Instruction::SkipIfKeyNotPressed { register } => todo!(),
+            Instruction::LoadDelayTimerIntoRegister { register } => todo!(),
+            Instruction::WaitForKeyPress { register } => todo!(),
+            Instruction::LoadRegisterIntoDelayTimer { register } => todo!(),
+            Instruction::LoadRegisterIntoSoundTimer { register } => todo!(),
+            Instruction::AddRegisterToIndex { register } => todo!(),
+            Instruction::LoadFontLocationIntoIndex { register } => todo!(),
+            Instruction::LoadBinaryCodedDecimalIntoMemory { register } => todo!(),
+            Instruction::LoadRegistersIntoMemory { register } => todo!(),
+            Instruction::LoadMemoryIntoRegisters { register } => todo!(),
+            _ => panic!("Unknown instruction"),
         }
     }
 }
