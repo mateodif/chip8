@@ -42,8 +42,8 @@ fn address_from_nibbles(a: u8, b: u8, c: u8) -> u16 {
     ((a as u16) << 8) + ((b as u16) << 4) + (c as u16)
 }
 
-#[derive(Debug)]
-enum Instruction {
+#[derive(Clone, Copy, Debug)]
+pub enum Instruction {
     NoOperation,
     ClearScreen,
     ReturnFromSubroutine,
@@ -84,8 +84,8 @@ enum Instruction {
 #[derive(Debug)]
 pub struct CHIP8 {
     memory: [u8; MEMORY_SIZE],
-    display: [u8; DISPLAY_SIZE],
-    registers: [u8; REGISTER_SIZE],
+    pub display: [u8; DISPLAY_SIZE],
+    pub registers: [u8; REGISTER_SIZE],
     stack: Vec<u16>,
     pc: u16,
     sp: u8,
@@ -155,12 +155,15 @@ impl CHIP8 {
         }
     }
 
-    fn fetch(&mut self) -> Instruction {
+    pub fn skip(&mut self) {
+        self.pc += 2;
+    }
+
+    pub fn fetch(&mut self) -> Instruction {
         let upc = self.pc as usize;
         let [first_nibble, second_nibble] = low_and_high_nibbles(self.memory[upc]);
         let [third_nibble, fourth_nibble] = low_and_high_nibbles(self.memory[upc + 1]);
         self.pc += 2;
-        [first_nibble, second_nibble, third_nibble, fourth_nibble];
 
         match [first_nibble, second_nibble, third_nibble, fourth_nibble] {
             [0x0, 0x0, 0xE, 0x0] => Instruction::ClearScreen,
@@ -199,12 +202,9 @@ impl CHIP8 {
             [0xF, x, 0x6, 0x5] => Instruction::LoadMemoryIntoRegisters { register: x },
             _ => panic!("Unknown instruction"),
         }
-
     }
 
-    pub fn execute(&mut self) {
-        let instruction = self.fetch();
-        println!("Fetched instruction: {:?}", instruction);
+    pub fn execute(&mut self, instruction: Instruction) {
         match instruction {
             Instruction::ClearScreen => {
                 self.display = [0u8; DISPLAY_SIZE];
@@ -223,17 +223,17 @@ impl CHIP8 {
             },
             Instruction::SkipIfEqual { register, byte } => {
                 if self.registers[register as usize] == byte {
-                    self.pc += 2;
+                    self.skip();
                 }
             },
             Instruction::SkipIfNotEqual { register, byte } => {
                 if self.registers[register as usize] != byte {
-                    self.pc += 2;
+                    self.skip();
                 }
             },
             Instruction::SkipIfRegisterEqual { register1, register2 } => {
                 if self.registers[register1 as usize] == self.registers[register2 as usize] {
-                    self.pc += 2;
+                    self.skip();
                 }
             },
             Instruction::LoadByteIntoRegister { register, byte } => {
@@ -279,7 +279,7 @@ impl CHIP8 {
             },
             Instruction::SkipIfRegisterNotEqual { register1, register2 } => {
                 if self.registers[register1 as usize] != self.registers[register2 as usize] {
-                    self.pc += 2;
+                    self.skip();
                 }
             },
             Instruction::LoadAddressIntoIndex { address } => {
@@ -293,13 +293,13 @@ impl CHIP8 {
                 let randint = rng.gen_range(0..255);
                 self.registers[register as usize] = byte & randint;
             },
-            Instruction::DrawSprite { register1, register2, nibble } => todo!("this should be handled in main thread"),
-            Instruction::SkipIfKeyPressed { register } => todo!("this should be handled in main thread"),
-            Instruction::SkipIfKeyNotPressed { register } => todo!("this should be handled in main thread"),
+            Instruction::DrawSprite { register1, register2, nibble } => panic!("this should be handled in main thread"),
+            Instruction::SkipIfKeyPressed { register } => panic!("this should be handled in main thread"),
+            Instruction::SkipIfKeyNotPressed { register } => panic!("this should be handled in main thread"),
             Instruction::LoadDelayTimerIntoRegister { register } => {
                 self.registers[register as usize] = self.delay_timer;
             },
-            Instruction::WaitForKeyPress { register } => todo!("this should be handled in main thread"),
+            Instruction::WaitForKeyPress { register } => panic!("this should be handled in main thread"),
             Instruction::LoadRegisterIntoDelayTimer { register } => {
                 self.delay_timer = self.registers[register as usize];
             },
@@ -381,7 +381,8 @@ mod test {
         let mut cpu = CHIP8::default();
         cpu.pc = 0x200;
         cpu.load_from_slice(&program, None);
-        cpu.execute();
+        let instruction = cpu.fetch();
+        cpu.execute(instruction);
         assert_eq!(cpu.pc, 0x202);
     }
 
@@ -394,7 +395,8 @@ mod test {
                 // The "program" is the LD instruction.
                 let program = [0x80 + reg_x, reg_y << 4];
                 cpu.load_from_slice(&program, None);
-                cpu.execute();
+                let instruction = cpu.fetch();
+                cpu.execute(instruction);
                 assert_eq!(cpu.pc, 0x202);
                 assert_eq!(cpu.registers[reg_x as usize], cpu.registers[reg_y as usize]);
             }
@@ -410,7 +412,8 @@ mod test {
                 let expected_val = from_low_and_high(*nibble_1, *nibble_2);
                 let program = [0x60 + reg_x, expected_val];
                 cpu.load_from_slice(&program, None);
-                cpu.execute();
+                let instruction = cpu.fetch();
+                cpu.execute(instruction);
                 assert_eq!(cpu.pc, 0x202);
                 assert_eq!(cpu.registers[reg_x as usize], expected_val);
             }
@@ -428,7 +431,8 @@ mod test {
                     .wrapping_add(from_low_and_high(*nibble_1, *nibble_2));
                 let program = [0x60 + reg_x, expected_val];
                 cpu.load_from_slice(&program, None);
-                cpu.execute();
+                let instruction = cpu.fetch();
+                cpu.execute(instruction);
                 assert_eq!(cpu.pc, 0x202);
                 assert_eq!(cpu.registers[reg_x as usize], expected_val);
             }
@@ -440,7 +444,8 @@ mod test {
         let mut cpu = CHIP8::default();
         cpu.pc = 0x200;
         cpu.load_from_slice(&program, None);
-        cpu.execute();
+        let instruction = cpu.fetch();
+        cpu.execute(instruction);
         assert_eq!(cpu.pc, 0x222);
     }
     #[test]
@@ -453,14 +458,16 @@ mod test {
             let call_instruction = [0x20 + nibble_1, (nibble_2 << 4) + nibble_3];
             cpu.pc = 0x200;
             cpu.load_from_slice(&call_instruction, None);
-            cpu.execute();
+            let instruction = cpu.fetch();
+            cpu.execute(instruction);
             assert_eq!(
                 cpu.pc,
                 address_from_nibbles(*nibble_1, *nibble_2, *nibble_3)
             );
             let ret_instruction = [0x0, 0xEE];
             cpu.load_from_slice(&ret_instruction, Some(address_from_nibbles(*nibble_1, *nibble_2, *nibble_3)));
-            cpu.execute();
+            let instruction = cpu.fetch();
+            cpu.execute(instruction);
             assert_eq!(cpu.pc, 0x202);
             cpu.sp = 0;
         }
