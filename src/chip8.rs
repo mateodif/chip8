@@ -3,6 +3,7 @@
 use std::default::Default;
 use std::fs::read;
 use std::path::Path;
+use rand::Rng;
 
 pub const MEMORY_SIZE: usize = 4 * 1024; // 0x1000 directions, from 0x0 to 0xFFF.
 pub const DISPLAY_SIZE: usize = 64 * 32;
@@ -143,6 +144,7 @@ impl CHIP8 {
             self.memory[i + start_address as usize] = slice[i];
         }
     }
+
     pub fn load_from_file(&mut self, path: &Path) {
         let path = path.canonicalize().unwrap();
         let file = read(path).unwrap();
@@ -278,9 +280,17 @@ impl CHIP8 {
                     self.pc += 2;
                 }
             },
-            Instruction::LoadAddressIntoIndex { address } => todo!(),
-            Instruction::JumpToAddressPlusV0 { address } => todo!(),
-            Instruction::RandomByteAndIntoRegister { register, byte } => todo!(),
+            Instruction::LoadAddressIntoIndex { address } => {
+                self.index = address;
+            },
+            Instruction::JumpToAddressPlusV0 { address } => {
+                self.pc = address + self.registers[0x0 as usize] as u16;
+            },
+            Instruction::RandomByteAndIntoRegister { register, byte } => {
+                let mut rng = rand::thread_rng();
+                let randint = rng.gen_range(0..255);
+                self.registers[register as usize] = byte & randint;
+            },
             Instruction::DrawSprite { register1, register2, nibble } => todo!(),
             Instruction::SkipIfKeyPressed { register } => todo!(),
             Instruction::SkipIfKeyNotPressed { register } => todo!(),
