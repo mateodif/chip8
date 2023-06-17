@@ -6,7 +6,9 @@ use std::path::Path;
 use rand::Rng;
 
 pub const MEMORY_SIZE: usize = 4 * 1024; // 0x1000 directions, from 0x0 to 0xFFF.
-pub const DISPLAY_SIZE: usize = 64 * 32;
+pub const DISPLAY_HEIGHT: usize = 64;
+pub const DISPLAY_WIDTH: usize = 32;
+pub const DISPLAY_SIZE: usize = DISPLAY_HEIGHT * DISPLAY_WIDTH;
 pub const REGISTER_SIZE: usize = 16;
 pub const PROGRAM_MEMORY_START: usize = 0x200; // Programs usually start a 0x200.
 
@@ -291,18 +293,42 @@ impl CHIP8 {
                 let randint = rng.gen_range(0..255);
                 self.registers[register as usize] = byte & randint;
             },
-            Instruction::DrawSprite { register1, register2, nibble } => todo!(),
-            Instruction::SkipIfKeyPressed { register } => todo!(),
-            Instruction::SkipIfKeyNotPressed { register } => todo!(),
-            Instruction::LoadDelayTimerIntoRegister { register } => todo!(),
-            Instruction::WaitForKeyPress { register } => todo!(),
-            Instruction::LoadRegisterIntoDelayTimer { register } => todo!(),
-            Instruction::LoadRegisterIntoSoundTimer { register } => todo!(),
-            Instruction::AddRegisterToIndex { register } => todo!(),
-            Instruction::LoadFontLocationIntoIndex { register } => todo!(),
-            Instruction::LoadBinaryCodedDecimalIntoMemory { register } => todo!(),
-            Instruction::LoadRegistersIntoMemory { register } => todo!(),
-            Instruction::LoadMemoryIntoRegisters { register } => todo!(),
+            Instruction::DrawSprite { register1, register2, nibble } => todo!("this should be handled in main thread"),
+            Instruction::SkipIfKeyPressed { register } => todo!("this should be handled in main thread"),
+            Instruction::SkipIfKeyNotPressed { register } => todo!("this should be handled in main thread"),
+            Instruction::LoadDelayTimerIntoRegister { register } => {
+                self.registers[register as usize] = self.delay_timer;
+            },
+            Instruction::WaitForKeyPress { register } => todo!("this should be handled in main thread"),
+            Instruction::LoadRegisterIntoDelayTimer { register } => {
+                self.delay_timer = self.registers[register as usize];
+            },
+            Instruction::LoadRegisterIntoSoundTimer { register } => {
+                self.sound_timer = self.registers[register as usize];
+            },
+            Instruction::AddRegisterToIndex { register } => {
+                self.index += self.registers[register as usize] as u16;
+            },
+            Instruction::LoadFontLocationIntoIndex { register } => {
+                self.index = (0x50 + self.registers[register as usize] * 5) as u16;
+            },
+            Instruction::LoadBinaryCodedDecimalIntoMemory { register } => {
+                let decimal = self.registers[register as usize];
+                let (hundreds, tens, ones) = (decimal / 100, (decimal / 10) % 10, decimal % 10);
+                self.memory[self.index as usize] = hundreds;
+                self.memory[(self.index + 1) as usize] = tens;
+                self.memory[(self.index + 2) as usize] = ones;
+            },
+            Instruction::LoadRegistersIntoMemory { register } => {
+                for register in 0..register {
+                    self.memory[(self.index + register as u16) as usize] = self.registers[register as usize];
+                }
+            },
+            Instruction::LoadMemoryIntoRegisters { register } => {
+                for register in 0..register {
+                    self.registers[register as usize] = self.memory[(self.index + register as u16) as usize];
+                }
+            },
             _ => panic!("Unknown instruction"),
         }
     }
