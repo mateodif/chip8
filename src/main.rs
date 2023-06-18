@@ -40,6 +40,9 @@ fn main() {
             Some(instruction) => instruction,
             _ => chip.fetch()
         };
+
+        println!("{:?}", instruction);
+
         for event in events.poll_iter() {
             match instruction {
                 Instruction::DrawSprite { register1, register2, nibble } => {
@@ -112,6 +115,6 @@ fn main() {
         canvas.present();
 
         // 60 FPS
-        std::thread::sleep(std::time::Duration::new(0, 1_000_000_000u32 / 20));
+        std::thread::sleep(std::time::Duration::new(0, 1_000_000_000u32 / 60));
     }
 }
