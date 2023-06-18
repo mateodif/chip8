@@ -78,6 +78,7 @@ pub enum Instruction {
     LoadBinaryCodedDecimalIntoMemory { register: u8 },
     LoadRegistersIntoMemory { register: u8 },
     LoadMemoryIntoRegisters { register: u8 },
+    UnknownInstruction,
 }
 
 #[derive(Debug)]
@@ -200,7 +201,10 @@ impl CHIP8 {
             [0xF, x, 0x3, 0x3] => Instruction::LoadBinaryCodedDecimalIntoMemory { register: x },
             [0xF, x, 0x5, 0x5] => Instruction::LoadRegistersIntoMemory { register: x },
             [0xF, x, 0x6, 0x5] => Instruction::LoadMemoryIntoRegisters { register: x },
-            unknown => panic!("Unknown instruction!"),
+            _ => {
+                println!("Unknown instruction!!");
+                Instruction::UnknownInstruction
+            },
         }
     }
 
@@ -329,7 +333,8 @@ impl CHIP8 {
                     self.registers[register as usize] = self.memory[(self.index + register as u16) as usize];
                 }
             },
-            _ => panic!("Unknown instruction"),
+            Instruction::UnknownInstruction => {},
+            _ => {}
         }
     }
 }
