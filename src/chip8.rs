@@ -8,7 +8,6 @@ use rand::Rng;
 pub const MEMORY_SIZE: usize = 4 * 1024; // 0x1000 directions, from 0x0 to 0xFFF.
 pub const DISPLAY_HEIGHT: usize = 64;
 pub const DISPLAY_WIDTH: usize = 32;
-pub const DISPLAY_SIZE: usize = DISPLAY_HEIGHT * DISPLAY_WIDTH;
 pub const REGISTER_SIZE: usize = 16;
 pub const PROGRAM_MEMORY_START: usize = 0x200; // Programs usually start a 0x200.
 
@@ -83,13 +82,13 @@ pub enum Instruction {
 
 #[derive(Debug)]
 pub struct CHIP8 {
-    memory: [u8; MEMORY_SIZE],
-    pub display: [u8; DISPLAY_SIZE],
+    pub memory: [u8; MEMORY_SIZE],
+    pub display: [[u8; DISPLAY_WIDTH]; DISPLAY_HEIGHT],
     pub registers: [u8; REGISTER_SIZE],
     stack: Vec<u16>,
     pc: u16,
     sp: u8,
-    index: u16,
+    pub index: u16,
     delay_timer: u8,
     sound_timer: u8,
 }
@@ -98,10 +97,10 @@ impl Default for CHIP8 {
     fn default() -> CHIP8 {
         CHIP8 {
             memory: [0u8; MEMORY_SIZE],
-            display: [0u8; DISPLAY_SIZE],
+            display: [[0u8; DISPLAY_WIDTH]; DISPLAY_HEIGHT],
             registers: [0u8; REGISTER_SIZE],
             stack: Vec::new(),
-            pc: 0x0,
+            pc: 0x200,
             sp: 0x0,
             index: 0x0,
             delay_timer: 0x0,
@@ -163,9 +162,10 @@ impl CHIP8 {
         let upc = self.pc as usize;
         let [first_nibble, second_nibble] = low_and_high_nibbles(self.memory[upc]);
         let [third_nibble, fourth_nibble] = low_and_high_nibbles(self.memory[upc + 1]);
+        let hex = [first_nibble, second_nibble, third_nibble, fourth_nibble];
         self.pc += 2;
-
-        match [first_nibble, second_nibble, third_nibble, fourth_nibble] {
+        println!("{:X?}", hex);
+        match hex {
             [0x0, 0x0, 0xE, 0x0] => Instruction::ClearScreen,
             [0x0, 0x0, 0xE, 0xE] => Instruction::ReturnFromSubroutine,
             [0x1, n1, n2, n3] => Instruction::Jump { address: from_nibbles(0x0, n1, n2, n3) },
@@ -200,14 +200,14 @@ impl CHIP8 {
             [0xF, x, 0x3, 0x3] => Instruction::LoadBinaryCodedDecimalIntoMemory { register: x },
             [0xF, x, 0x5, 0x5] => Instruction::LoadRegistersIntoMemory { register: x },
             [0xF, x, 0x6, 0x5] => Instruction::LoadMemoryIntoRegisters { register: x },
-            _ => panic!("Unknown instruction"),
+            unknown => panic!("Unknown instruction!"),
         }
     }
 
     pub fn execute(&mut self, instruction: Instruction) {
         match instruction {
             Instruction::ClearScreen => {
-                self.display = [0u8; DISPLAY_SIZE];
+                self.display = [[0u8; DISPLAY_WIDTH]; DISPLAY_HEIGHT];
             },
             Instruction::ReturnFromSubroutine => {
                 self.pc = self.stack.pop().unwrap();
