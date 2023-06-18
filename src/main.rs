@@ -7,8 +7,6 @@ use sdl2::event::Event;
 pub mod chip8;
 use crate::chip8::CHIP8;
 
-use chip8::Instruction;
-
 fn main() {
     let mut chip = CHIP8::default();
     chip.load_font();
@@ -30,91 +28,38 @@ fn main() {
 
     let mut events = sdl_context.event_pump().unwrap();
 
-    let mut waiting_for_keypress = None;
-
     loop {
         canvas.set_draw_color(Color::RGB(97, 134, 169));
         canvas.clear();
 
-        let instruction = match waiting_for_keypress {
-            Some(instruction) => instruction,
-            _ => chip.fetch()
-        };
 
-        println!("{:?}", instruction);
+        let mut keydown_event = None;
 
         for event in events.poll_iter() {
-            match instruction {
-                Instruction::DrawSprite { register1, register2, nibble } => {
-                    let coord_x = (chip.registers[register1 as usize] & (chip8::DISPLAY_HEIGHT - 1) as u8) as usize;
-                    let coord_y = (chip.registers[register2 as usize] & (chip8::DISPLAY_WIDTH - 1) as u8) as usize;
-                    chip.registers[0xF as usize] = 0;
-
-                    for byte in 0..(nibble as usize) {
-                        let y = (coord_y + byte) % chip8::DISPLAY_HEIGHT;
-                        for bit in 0..8 {
-                            let x = (coord_x + bit) % chip8::DISPLAY_WIDTH;
-                            let sprite_pixel = (chip.memory[chip.index as usize + byte] >> (7 - bit)) & 1;
-                            let display_pixel = chip.display[x][y];
-
-                            chip.display[x][y] ^= sprite_pixel;
-
-                            if display_pixel == 1 && sprite_pixel == 1 {
-                                chip.registers[0xF as usize] = 1;
-                            }
-                        }
-                    }
-
-                },
-                Instruction::SkipIfKeyPressed { register } => {
-                    match event {
-                        Event::KeyDown { keycode: Some(keycode), .. } => {
-                            if chip.registers[register as usize] == keycode as u8 {
-                                chip.skip();
-                            }
-                        },
-                        _ => continue,
-                    };
-                },
-                Instruction::SkipIfKeyNotPressed { register } => {
-                    match event {
-                        Event::KeyDown { keycode: Some(keycode), .. } => {
-                            if chip.registers[register as usize] != keycode as u8 {
-                                chip.skip();
-                            }
-                        },
-                        _ => continue,
-                    };
-                },
-                Instruction::WaitForKeyPress { register } => {
-                    waiting_for_keypress = Some(instruction);
-                    match event {
-                        Event::KeyDown { keycode: Some(keycode), .. } => {
-                            chip.registers[register as usize] = keycode as u8;
-                            waiting_for_keypress = None;
-                            continue
-                        },
-                        _ => continue,
-                    };
-                },
-                _ => {
-                    chip.execute(instruction);
-                    continue
-                },
+            match event {
+                Event::KeyDown { keycode: Some(keycode), .. } => keydown_event = Some(keycode),
+                _ => {}
             }
         }
 
+        let instruction = chip.fetch();
+        println!("{:?}", instruction);
+        chip.handle_keydown(keydown_event);
+        chip.execute(instruction);
+
         canvas.set_draw_color(Color::RGB(33, 41, 70));
-        for (x, row) in chip.display.iter().enumerate() {
+
+        for (x, row) in chip.get_display().iter().enumerate() {
             for (y, _) in row.iter().enumerate() {
-                if chip.display[x][y] == 1 {
+                if chip.get_display()[x][y] == 1 {
                     canvas.draw_point((x as i32, y as i32)).unwrap();
                 }
             }
         }
+
         canvas.present();
 
         // 60 FPS
-        std::thread::sleep(std::time::Duration::new(0, 1_000_000_000u32 / 60));
+        std::thread::sleep(std::time::Duration::new(0, 1_000_000_000u32 / 30));
     }
 }

@@ -4,6 +4,7 @@ use std::default::Default;
 use std::fs::read;
 use std::path::Path;
 use rand::Rng;
+use sdl2::keyboard::Keycode;
 
 pub const MEMORY_SIZE: usize = 4 * 1024; // 0x1000 directions, from 0x0 to 0xFFF.
 pub const DISPLAY_HEIGHT: usize = 64;
@@ -83,15 +84,16 @@ pub enum Instruction {
 
 #[derive(Debug)]
 pub struct CHIP8 {
-    pub memory: [u8; MEMORY_SIZE],
-    pub display: [[u8; DISPLAY_WIDTH]; DISPLAY_HEIGHT],
-    pub registers: [u8; REGISTER_SIZE],
+    memory: [u8; MEMORY_SIZE],
+    display: [[u8; DISPLAY_WIDTH]; DISPLAY_HEIGHT],
+    registers: [u8; REGISTER_SIZE],
     stack: Vec<u16>,
     pc: u16,
     sp: u8,
-    pub index: u16,
+    index: u16,
     delay_timer: u8,
     sound_timer: u8,
+    keycode: Option<sdl2::keyboard::Keycode>, // :^)
 }
 
 impl Default for CHIP8 {
@@ -106,6 +108,7 @@ impl Default for CHIP8 {
             index: 0x0,
             delay_timer: 0x0,
             sound_timer: 0x0,
+            keycode: None
         }
     }
 }
@@ -205,6 +208,10 @@ impl CHIP8 {
         }
     }
 
+    pub fn handle_keydown(&mut self, keycode: Option<Keycode>) {
+        self.keycode = keycode;
+    }
+
     pub fn execute(&mut self, instruction: Instruction) {
         match instruction {
             Instruction::ClearScreen => {
@@ -295,13 +302,57 @@ impl CHIP8 {
                 let randint = rng.gen_range(0..255);
                 self.registers[register as usize] = byte & randint;
             },
-            Instruction::DrawSprite { register1, register2, nibble } => panic!("this should be handled in main thread"),
-            Instruction::SkipIfKeyPressed { register } => panic!("this should be handled in main thread"),
-            Instruction::SkipIfKeyNotPressed { register } => panic!("this should be handled in main thread"),
+            Instruction::DrawSprite { register1, register2, nibble } => {
+                let coord_x = (self.registers[register1 as usize] & (DISPLAY_HEIGHT - 1) as u8) as usize;
+                let coord_y = (self.registers[register2 as usize] & (DISPLAY_WIDTH - 1) as u8) as usize;
+                self.registers[0xF as usize] = 0;
+
+                for byte in 0..(nibble as usize) {
+                    let y = (coord_y + byte) % DISPLAY_HEIGHT;
+                    for bit in 0..8 {
+                        let x = (coord_x + bit) % DISPLAY_WIDTH;
+                        let sprite_pixel = (self.memory[self.index as usize + byte] >> (7 - bit)) & 1;
+                        let display_pixel = self.display[x][y];
+
+                        self.display[x][y] ^= sprite_pixel;
+
+                        if display_pixel == 1 && sprite_pixel == 1 {
+                            self.registers[0xF as usize] = 1;
+                        }
+                    }
+                }
+            },
+            Instruction::SkipIfKeyPressed { register } => {
+                match self.keycode {
+                    Some(keycode) => {
+                        if self.registers[register as usize] == keycode as u8 {
+                            self.skip();
+                        }
+                    },
+                    _ => {},
+                }
+            },
+            Instruction::SkipIfKeyNotPressed { register } => {
+                match self.keycode {
+                    Some(keycode) => {
+                        if self.registers[register as usize] != keycode as u8 {
+                            self.skip();
+                        }
+                    },
+                    _ => {},
+                }
+            },
             Instruction::LoadDelayTimerIntoRegister { register } => {
                 self.registers[register as usize] = self.delay_timer;
             },
-            Instruction::WaitForKeyPress { register } => panic!("this should be handled in main thread"),
+            Instruction::WaitForKeyPress { register } => {
+                match self.keycode {
+                    Some(keycode) => {
+                        self.registers[register as usize] = keycode as u8;
+                    },
+                    _ => {},
+                }
+            },
             Instruction::LoadRegisterIntoDelayTimer { register } => {
                 self.delay_timer = self.registers[register as usize];
             },
@@ -334,6 +385,10 @@ impl CHIP8 {
             Instruction::UnknownInstruction => panic!(),
             _ => panic!(),
         }
+    }
+
+    pub fn get_display(&mut self) -> [[u8; DISPLAY_WIDTH]; DISPLAY_HEIGHT] {
+        self.display
     }
 }
 
