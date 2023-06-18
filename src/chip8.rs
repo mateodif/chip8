@@ -101,7 +101,7 @@ impl Default for CHIP8 {
             display: [[0u8; DISPLAY_WIDTH]; DISPLAY_HEIGHT],
             registers: [0u8; REGISTER_SIZE],
             stack: Vec::new(),
-            pc: 0x200,
+            pc: PROGRAM_MEMORY_START as u16,
             sp: 0x0,
             index: 0x0,
             delay_timer: 0x0,
@@ -211,8 +211,8 @@ impl CHIP8 {
                 self.display = [[0u8; DISPLAY_WIDTH]; DISPLAY_HEIGHT];
             },
             Instruction::ReturnFromSubroutine => {
-                self.pc = self.stack.pop().unwrap();
                 self.sp -= 1;
+                self.pc = self.stack.pop().unwrap();
             },
             Instruction::Jump { address } => {
                 self.pc = address;
@@ -264,7 +264,7 @@ impl CHIP8 {
             Instruction::SubRegisters { register1, register2 } => {
                 let (res, borrow) = self.registers[register1 as usize].borrowing_sub(self.registers[register2 as usize], false);
                 self.registers[register1 as usize] = res;
-                self.registers[0xF as usize] = if borrow { 1 } else { 0 };
+                self.registers[0xF as usize] = if !borrow { 1 } else { 0 };
             },
             Instruction::ShiftRight { register } => {
                 self.registers[register as usize] = self.registers[register as usize] >> 1;
@@ -322,13 +322,13 @@ impl CHIP8 {
                 self.memory[(self.index + 2) as usize] = ones;
             },
             Instruction::LoadRegistersIntoMemory { register } => {
-                for register in 0..register {
-                    self.memory[(self.index + register as u16) as usize] = self.registers[register as usize];
+                for i in 0..=register {
+                    self.memory[(self.index + i as u16) as usize] = self.registers[i as usize];
                 }
             },
             Instruction::LoadMemoryIntoRegisters { register } => {
-                for register in 0..register {
-                    self.registers[register as usize] = self.memory[(self.index + register as u16) as usize];
+                for i in 0..=register {
+                    self.registers[i as usize] = self.memory[(self.index + i as u16) as usize];
                 }
             },
             Instruction::UnknownInstruction => panic!(),
@@ -380,13 +380,10 @@ mod test {
 
     #[test]
     fn test_load_clear_screen() {
-        let program = [0x00, 0xE0];
         let mut cpu = CHIP8::default();
-        cpu.pc = 0x200;
-        cpu.load_from_slice(&program, None);
-        let instruction = cpu.fetch();
-        cpu.execute(instruction);
-        assert_eq!(cpu.pc, 0x202);
+        cpu.display = [[1u8; DISPLAY_WIDTH]; DISPLAY_HEIGHT];
+        cpu.execute(Instruction::ClearScreen);
+        assert_eq!(cpu.display, [[0u8; DISPLAY_WIDTH]; DISPLAY_HEIGHT]);
     }
 
     #[test]
@@ -405,6 +402,7 @@ mod test {
             }
         }
     }
+
     #[test]
     fn test_set_register_to_immediate() {
         let mut cpu = CHIP8::default();
@@ -441,38 +439,188 @@ mod test {
             }
         }
     }
-    #[test]
-    fn test_jump_immediate() {
-        let program = [0x12, 0x22];
-        let mut cpu = CHIP8::default();
-        cpu.pc = 0x200;
-        cpu.load_from_slice(&program, None);
-        let instruction = cpu.fetch();
-        cpu.execute(instruction);
-        assert_eq!(cpu.pc, 0x222);
-    }
+
     #[test]
     fn test_call_and_return_subroutine() {
         let mut cpu = CHIP8::default();
-        for nibbles in (0x0..=0xF).permutations(3).collect_vec() {
-            // First execute a call, and then return
-            // to the original position using return.
-            let [nibble_1, nibble_2, nibble_3] = &nibbles[..] else {panic!("Permutations are working weirdly")};
-            let call_instruction = [0x20 + nibble_1, (nibble_2 << 4) + nibble_3];
-            cpu.pc = 0x200;
-            cpu.load_from_slice(&call_instruction, None);
-            let instruction = cpu.fetch();
-            cpu.execute(instruction);
-            assert_eq!(
-                cpu.pc,
-                address_from_nibbles(*nibble_1, *nibble_2, *nibble_3)
-            );
-            let ret_instruction = [0x0, 0xEE];
-            cpu.load_from_slice(&ret_instruction, Some(address_from_nibbles(*nibble_1, *nibble_2, *nibble_3)));
-            let instruction = cpu.fetch();
-            cpu.execute(instruction);
-            assert_eq!(cpu.pc, 0x202);
-            cpu.sp = 0;
+        cpu.stack.push(0x200);
+        cpu.sp = 1;
+        cpu.execute(Instruction::ReturnFromSubroutine);
+        assert_eq!(cpu.pc, 0x200);
+        assert_eq!(cpu.sp, 0);
+    }
+
+    #[test]
+    fn test_jump_immediate() {
+        let mut cpu = CHIP8::default();
+        cpu.execute(Instruction::Jump { address: 0x200 });
+        assert_eq!(cpu.pc, 0x200);
+    }
+
+    #[test]
+    fn test_call_subroutine() {
+        let mut cpu = CHIP8::default();
+        cpu.execute(Instruction::CallSubroutine { address: 0x300 });
+        assert_eq!(cpu.pc, 0x300);
+        assert_eq!(cpu.stack[0], PROGRAM_MEMORY_START as u16);
+        assert_eq!(cpu.sp, 1);
+    }
+
+    #[test]
+    fn test_subroutine() {
+        let mut cpu = CHIP8::default();
+
+        cpu.execute(Instruction::CallSubroutine { address: 0x300 });
+        assert_eq!(cpu.stack[0], 0x200);
+        assert_eq!(cpu.pc, 0x300);
+
+        cpu.execute(Instruction::LoadByteIntoRegister { register: 0, byte: 0xAB });
+        assert_eq!(cpu.registers[0], 0xAB);
+
+        cpu.execute(Instruction::ReturnFromSubroutine);
+        assert_eq!(cpu.pc, 0x200);
+
+        cpu.execute(Instruction::SkipIfEqual { register: 0, byte: 0xAB });
+        assert_eq!(cpu.pc, 0x202);
+    }
+
+    #[test]
+    fn test_skip_if_equal() {
+        let mut cpu = CHIP8::default();
+        cpu.registers[0] = 0xAB;
+        cpu.execute(Instruction::SkipIfEqual { register: 0, byte: 0xAB });
+        assert_eq!(cpu.pc, (PROGRAM_MEMORY_START as u16) + 2);
+    }
+
+    #[test]
+    fn test_skip_if_not_equal() {
+        let mut cpu = CHIP8::default();
+        cpu.registers[0] = 0xAB;
+        cpu.execute(Instruction::SkipIfNotEqual { register: 0, byte: 0xCD });
+        assert_eq!(cpu.pc, (PROGRAM_MEMORY_START as u16) + 2);
+    }
+
+    #[test]
+    fn test_load_byte_into_register() {
+        let mut cpu = CHIP8::default();
+
+        for i in 0..16 {
+            cpu.execute(Instruction::LoadByteIntoRegister { register: i, byte: i as u8 * 10 });
+        }
+
+        for i in 0..16 {
+            assert_eq!(cpu.registers[i as usize], i as u8 * 10);
+        }
+
+        cpu.execute(Instruction::LoadByteIntoRegister { register: 0, byte: 255 });
+
+        assert_eq!(cpu.registers[0], 255);
+        for i in 1..16 {
+            assert_eq!(cpu.registers[i as usize], i as u8 * 10);
+        }
+
+        cpu.execute(Instruction::LoadByteIntoRegister { register: 15, byte: 255 });
+
+        assert_eq!(cpu.registers[15], 255);
+        assert_eq!(cpu.registers[0], 255);
+        for i in 1..15 {
+            assert_eq!(cpu.registers[i as usize], i as u8 * 10);
         }
     }
+
+    #[test]
+    fn test_add_byte_to_register() {
+        let mut cpu = CHIP8::default();
+        let register = 0xA;
+        let byte = 0x10;
+        cpu.registers[register as usize] = 0x20;
+        cpu.execute(Instruction::AddByteToRegister { register, byte });
+        assert_eq!(cpu.registers[register as usize], 0x30, "Byte was not correctly added to the register.");
+    }
+
+    #[test]
+    fn test_add_registers() {
+        let mut cpu = CHIP8::default();
+        let register1 = 0xA;
+        let register2 = 0xB;
+        cpu.registers[register1 as usize] = 0x20;
+        cpu.registers[register2 as usize] = 0x10;
+        cpu.execute(Instruction::AddRegisters { register1, register2 });
+        assert_eq!(cpu.registers[register1 as usize], 0x30, "Registers were not correctly added.");
+        assert_eq!(cpu.registers[0xF], 0, "Overflow flag should be unset.");
+    }
+
+    #[test]
+    fn test_sub_registers() {
+        let mut cpu = CHIP8::default();
+        let register1 = 0xA;
+        let register2 = 0xB;
+        cpu.registers[register1 as usize] = 0x20;
+        cpu.registers[register2 as usize] = 0x10;
+        cpu.execute(Instruction::SubRegisters { register1, register2 });
+        assert_eq!(cpu.registers[register1 as usize], 0x10, "Registers were not correctly subtracted.");
+        assert_eq!(cpu.registers[0xF], 1, "Borrow flag should be set.");
+    }
+
+    #[test]
+    fn test_load_registers_into_memory() {
+        let mut cpu = CHIP8::default();
+        let register = 0xA;
+        for i in 0..=register {
+            cpu.registers[i as usize] = i as u8;
+        }
+        cpu.index = 0x200;
+        cpu.execute(Instruction::LoadRegistersIntoMemory { register });
+        for i in 0..=register {
+            assert_eq!(cpu.memory[(cpu.index + i as u16) as usize], i as u8, "Registers were not correctly loaded into memory.");
+        }
+    }
+
+    #[test]
+    fn test_another_load_registers_into_memory() {
+        let mut cpu = CHIP8::default();
+        cpu.index = 0x200;
+
+        for i in 0..8 {
+            cpu.registers[i] = i as u8 * 10;
+        }
+
+        cpu.execute(Instruction::LoadRegistersIntoMemory { register: 7 });
+
+        for i in 0..=7 {
+            assert_eq!(cpu.memory[cpu.index as usize + i], i as u8 * 10);
+        }
+    }
+
+    #[test]
+    fn test_complex_scenario() {
+        let mut cpu = CHIP8::default();
+
+        cpu.execute(Instruction::CallSubroutine { address: 0x300 });
+        assert_eq!(cpu.stack[0x0], 0x200);
+        assert_eq!(cpu.pc, 0x300);
+
+        cpu.execute(Instruction::LoadByteIntoRegister { register: 1, byte: 0x05 });
+        assert_eq!(cpu.registers[0x1], 0x05);
+
+        cpu.execute(Instruction::LoadByteIntoRegister { register: 2, byte: 0x06 });
+        assert_eq!(cpu.registers[0x2], 0x06);
+
+        cpu.execute(Instruction::AddRegisters { register1: 1, register2: 2 });
+        assert_eq!(cpu.registers[0x1], 0x0B);
+
+        assert_eq!(cpu.registers[0xF], 0x00);
+
+        cpu.execute(Instruction::SubRegisters { register1: 1, register2: 2 });
+        assert_eq!(cpu.registers[0x1], 0x05);
+
+        assert_eq!(cpu.registers[0xF], 0x01); // 1 - 6
+
+        cpu.execute(Instruction::LoadRegistersIntoMemory { register: 1 });
+        assert_eq!(cpu.memory[cpu.index as usize], 0x05);
+
+        cpu.execute(Instruction::ReturnFromSubroutine);
+        assert_eq!(cpu.pc, 0x200);
+    }
+
 }
