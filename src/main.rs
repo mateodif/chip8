@@ -17,8 +17,8 @@ fn main() {
     let video_subsystem = sdl_context.video().unwrap();
 
     let window = video_subsystem.window("CHIP-8",
-                                        (chip8::DISPLAY_HEIGHT * 8) as u32,
-                                        (chip8::DISPLAY_WIDTH * 8) as u32)
+                                        (chip8::DISPLAY_HEIGHT * 10) as u32,
+                                        (chip8::DISPLAY_WIDTH * 10) as u32)
                                 .position_centered()
                                 .build()
                                 .unwrap();
@@ -31,7 +31,6 @@ fn main() {
     loop {
         canvas.set_draw_color(Color::RGB(97, 134, 169));
         canvas.clear();
-
 
         let mut keydown_event = None;
 
@@ -50,8 +49,8 @@ fn main() {
         canvas.set_draw_color(Color::RGB(33, 41, 70));
 
         for (x, row) in chip.get_display().iter().enumerate() {
-            for (y, _) in row.iter().enumerate() {
-                if chip.get_display()[x][y] == 1 {
+            for (y, &pixel) in row.iter().enumerate() {
+                if pixel == 1 {
                     canvas.draw_point((x as i32, y as i32)).unwrap();
                 }
             }

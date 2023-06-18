@@ -303,15 +303,17 @@ impl CHIP8 {
                 self.registers[register as usize] = byte & randint;
             },
             Instruction::DrawSprite { register1, register2, nibble } => {
-                let coord_x = (self.registers[register1 as usize] & (DISPLAY_HEIGHT - 1) as u8) as usize;
-                let coord_y = (self.registers[register2 as usize] & (DISPLAY_WIDTH - 1) as u8) as usize;
+                let coord_x = (self.registers[register1 as usize] & (DISPLAY_WIDTH - 1) as u8) as usize;
+                let coord_y = (self.registers[register2 as usize] & (DISPLAY_HEIGHT - 1) as u8) as usize;
                 self.registers[0xF as usize] = 0;
 
                 for byte in 0..(nibble as usize) {
                     let y = (coord_y + byte) % DISPLAY_HEIGHT;
+                    let sprite_byte = self.memory[self.index as usize + byte];
+
                     for bit in 0..8 {
                         let x = (coord_x + bit) % DISPLAY_WIDTH;
-                        let sprite_pixel = (self.memory[self.index as usize + byte] >> (7 - bit)) & 1;
+                        let sprite_pixel = (sprite_byte >> (7 - bit)) & 1;
                         let display_pixel = self.display[x][y];
 
                         self.display[x][y] ^= sprite_pixel;
