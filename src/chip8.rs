@@ -201,10 +201,7 @@ impl CHIP8 {
             [0xF, x, 0x3, 0x3] => Instruction::LoadBinaryCodedDecimalIntoMemory { register: x },
             [0xF, x, 0x5, 0x5] => Instruction::LoadRegistersIntoMemory { register: x },
             [0xF, x, 0x6, 0x5] => Instruction::LoadMemoryIntoRegisters { register: x },
-            _ => {
-                println!("Unknown instruction!!");
-                Instruction::UnknownInstruction
-            },
+            _ => Instruction::UnknownInstruction,
         }
     }
 
@@ -221,8 +218,8 @@ impl CHIP8 {
                 self.pc = address;
             },
             Instruction::CallSubroutine { address } => {
-                self.sp += 1;
                 self.stack.push(self.pc);
+                self.sp += 1;
                 self.pc = address;
             },
             Instruction::SkipIfEqual { register, byte } => {
@@ -244,7 +241,8 @@ impl CHIP8 {
                 self.registers[register as usize] = byte;
             },
             Instruction::AddByteToRegister { register, byte } => {
-                self.registers[register as usize] += byte;
+                let sum = self.registers[register as usize].wrapping_add(byte);
+                self.registers[register as usize] = sum;
             },
             Instruction::LoadRegisterIntoRegister { register1, register2 } => {
                 self.registers[register1 as usize] = self.registers[register2 as usize];
@@ -269,8 +267,8 @@ impl CHIP8 {
                 self.registers[0xF as usize] = if borrow { 1 } else { 0 };
             },
             Instruction::ShiftRight { register } => {
-                self.registers[register as usize] = register >> 1;
-                self.registers[0xF as usize] = register & 1;
+                self.registers[register as usize] = self.registers[register as usize] >> 1;
+                self.registers[0xF as usize] = self.registers[register as usize] & 1;
             },
             Instruction::SubNRegisters { register1, register2 } => {
                 let (res, borrow) = self.registers[register2 as usize].borrowing_sub(self.registers[register1 as usize], false);
@@ -278,8 +276,8 @@ impl CHIP8 {
                 self.registers[0xF as usize] = if borrow { 1 } else { 0 };
             },
             Instruction::ShiftLeft { register } => {
-                self.registers[register as usize] = register << 1;
-                self.registers[0xF as usize] = register >> 7;
+                self.registers[register as usize] = self.registers[register as usize] << 1;
+                self.registers[0xF as usize] = self.registers[register as usize] >> 7;
             },
             Instruction::SkipIfRegisterNotEqual { register1, register2 } => {
                 if self.registers[register1 as usize] != self.registers[register2 as usize] {
@@ -333,8 +331,8 @@ impl CHIP8 {
                     self.registers[register as usize] = self.memory[(self.index + register as u16) as usize];
                 }
             },
-            Instruction::UnknownInstruction => {},
-            _ => {}
+            Instruction::UnknownInstruction => panic!(),
+            _ => panic!(),
         }
     }
 }
