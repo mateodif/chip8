@@ -674,7 +674,7 @@ mod test {
         assert_eq!(cpu.registers[0xF], 0x01); // 1 - 6
 
         cpu.execute(Instruction::LoadRegistersIntoMemory { register: 1 });
-        assert_eq!(cpu.memory[cpu.index as usize], 0x05);
+        assert_eq!(cpu.memory[(cpu.index + 1) as usize], 0x05);
 
         cpu.execute(Instruction::ReturnFromSubroutine);
         assert_eq!(cpu.pc, 0x200);
