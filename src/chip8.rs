@@ -230,64 +230,64 @@ impl CHIP8 {
                 self.pc = address;
             },
             Instruction::SkipIfEqual { register, byte } => {
-                if self.registers[register as usize] == byte {
+                if self.registers[register] == byte {
                     self.skip();
                 }
             },
             Instruction::SkipIfNotEqual { register, byte } => {
-                if self.registers[register as usize] != byte {
+                if self.registers[register] != byte {
                     self.skip();
                 }
             },
             Instruction::SkipIfRegisterEqual { register1, register2 } => {
-                if self.registers[register1 as usize] == self.registers[register2 as usize] {
+                if self.registers[register1] == self.registers[register2] {
                     self.skip();
                 }
             },
             Instruction::LoadByteIntoRegister { register, byte } => {
-                self.registers[register as usize] = byte;
+                self.registers[register] = byte;
             },
             Instruction::AddByteToRegister { register, byte } => {
-                let sum = self.registers[register as usize].wrapping_add(byte);
-                self.registers[register as usize] = sum;
+                let sum = self.registers[register].wrapping_add(byte);
+                self.registers[register] = sum;
             },
             Instruction::LoadRegisterIntoRegister { register1, register2 } => {
-                self.registers[register1 as usize] = self.registers[register2 as usize];
+                self.registers[register1] = self.registers[register2];
             },
             Instruction::OrRegisters { register1, register2 } => {
-                self.registers[register1 as usize] = self.registers[register1 as usize] | self.registers[register2 as usize];
+                self.registers[register1] = self.registers[register1] | self.registers[register2];
             },
             Instruction::AndRegisters { register1, register2 } => {
-                self.registers[register1 as usize] = self.registers[register1 as usize] & self.registers[register2 as usize];
+                self.registers[register1] = self.registers[register1] & self.registers[register2];
             },
             Instruction::XorRegisters { register1, register2 } => {
-                self.registers[register1 as usize] = self.registers[register1 as usize] ^ self.registers[register2 as usize];
+                self.registers[register1] = self.registers[register1] ^ self.registers[register2];
             },
             Instruction::AddRegisters { register1, register2 } => {
-                let (res, overflow) = self.registers[register1 as usize].carrying_add(self.registers[register2 as usize], false);
-                self.registers[register1 as usize] = res;
-                self.registers[0xF as usize] = if overflow { 1 } else { 0 };
+                let (res, overflow) = self.registers[register1].carrying_add(self.registers[register2], false);
+                self.registers[register1] = res;
+                self.registers[0xF_u8] = if overflow { 1 } else { 0 };
             },
             Instruction::SubRegisters { register1, register2 } => {
-                let (res, borrow) = self.registers[register1 as usize].borrowing_sub(self.registers[register2 as usize], false);
-                self.registers[register1 as usize] = res;
-                self.registers[0xF as usize] = if !borrow { 1 } else { 0 };
+                let (res, borrow) = self.registers[register1].borrowing_sub(self.registers[register2], false);
+                self.registers[register1] = res;
+                self.registers[0xF_u8] = if !borrow { 1 } else { 0 };
             },
             Instruction::ShiftRight { register } => {
-                self.registers[register as usize] = self.registers[register as usize] >> 1;
-                self.registers[0xF as usize] = self.registers[register as usize] & 1;
+                self.registers[register] = self.registers[register] >> 1;
+                self.registers[0xF_u8] = self.registers[register] & 1;
             },
             Instruction::SubNRegisters { register1, register2 } => {
-                let (res, borrow) = self.registers[register2 as usize].borrowing_sub(self.registers[register1 as usize], false);
-                self.registers[register1 as usize] = res;
-                self.registers[0xF as usize] = if borrow { 1 } else { 0 };
+                let (res, borrow) = self.registers[register2].borrowing_sub(self.registers[register1], false);
+                self.registers[register1] = res;
+                self.registers[0xF_u8] = if borrow { 1 } else { 0 };
             },
             Instruction::ShiftLeft { register } => {
-                self.registers[register as usize] = self.registers[register as usize] << 1;
-                self.registers[0xF as usize] = self.registers[register as usize] >> 7;
+                self.registers[register] = self.registers[register] << 1;
+                self.registers[0xF_u8] = self.registers[register] >> 7;
             },
             Instruction::SkipIfRegisterNotEqual { register1, register2 } => {
-                if self.registers[register1 as usize] != self.registers[register2 as usize] {
+                if self.registers[register1] != self.registers[register2] {
                     self.skip();
                 }
             },
@@ -295,17 +295,17 @@ impl CHIP8 {
                 self.index = address;
             },
             Instruction::JumpToAddressPlusV0 { address } => {
-                self.pc = address + self.registers[0x0 as usize] as u16;
+                self.pc = address + self.registers[0x0_u8] as u16;
             },
             Instruction::RandomByteAndIntoRegister { register, byte } => {
                 let mut rng = rand::thread_rng();
                 let randint = rng.gen_range(0..255);
-                self.registers[register as usize] = byte & randint;
+                self.registers[register] = byte & randint;
             },
             Instruction::DrawSprite { register1, register2, nibble } => {
-                let coord_x = self.registers[register1 as usize] % DISPLAY_WIDTH as u8;
-                let coord_y = self.registers[register2 as usize] % DISPLAY_HEIGHT as u8;
-                self.registers[0xF as usize] = 0;
+                let coord_x = self.registers[register1] % DISPLAY_WIDTH as u8;
+                let coord_y = self.registers[register2] % DISPLAY_HEIGHT as u8;
+                self.registers[0xF_u8] = 0;
 
                 for byte in 0..(nibble as usize) {
                     let y = (coord_y as usize + byte) % DISPLAY_HEIGHT;
@@ -316,7 +316,7 @@ impl CHIP8 {
                         let sprite_pixel = (sprite_byte >> (7 - bit)) & 1;
 
                         if self.display[y][x] == 1 && sprite_pixel == 1 {
-                            self.registers[0xF as usize] = 1;
+                            self.registers[0xF_u8] = 1;
                         }
 
                         self.display[y][x] ^= sprite_pixel;
@@ -327,7 +327,7 @@ impl CHIP8 {
             Instruction::SkipIfKeyPressed { register } => {
                 match self.keycode {
                     Some(keycode) => {
-                        if self.registers[register as usize] == keycode as u8 {
+                        if self.registers[register] == keycode as u8 {
                             self.skip();
                         }
                     },
@@ -337,7 +337,7 @@ impl CHIP8 {
             Instruction::SkipIfKeyNotPressed { register } => {
                 match self.keycode {
                     Some(keycode) => {
-                        if self.registers[register as usize] != keycode as u8 {
+                        if self.registers[register] != keycode as u8 {
                             self.skip();
                         }
                     },
@@ -345,30 +345,30 @@ impl CHIP8 {
                 }
             },
             Instruction::LoadDelayTimerIntoRegister { register } => {
-                self.registers[register as usize] = self.delay_timer;
+                self.registers[register] = self.delay_timer;
             },
             Instruction::WaitForKeyPress { register } => {
                 match self.keycode {
                     Some(keycode) => {
-                        self.registers[register as usize] = keycode as u8;
+                        self.registers[register] = keycode as u8;
                     },
                     _ => {},
                 }
             },
             Instruction::LoadRegisterIntoDelayTimer { register } => {
-                self.delay_timer = self.registers[register as usize];
+                self.delay_timer = self.registers[register];
             },
             Instruction::LoadRegisterIntoSoundTimer { register } => {
-                self.sound_timer = self.registers[register as usize];
+                self.sound_timer = self.registers[register];
             },
             Instruction::AddRegisterToIndex { register } => {
-                self.index += self.registers[register as usize] as u16;
+                self.index += self.registers[register] as u16;
             },
             Instruction::LoadFontLocationIntoIndex { register } => {
-                self.index = (0x50 + self.registers[register as usize] * 5) as u16;
+                self.index = (0x50 + self.registers[register] * 5) as u16;
             },
             Instruction::LoadBinaryCodedDecimalIntoMemory { register } => {
-                let decimal = self.registers[register as usize];
+                let decimal = self.registers[register];
                 let (hundreds, tens, ones) = (decimal / 100, (decimal / 10) % 10, decimal % 10);
                 self.memory[self.index as usize] = hundreds;
                 self.memory[(self.index + 1) as usize] = tens;
@@ -376,12 +376,12 @@ impl CHIP8 {
             },
             Instruction::LoadRegistersIntoMemory { register } => {
                 for i in 0..=register {
-                    self.memory[(self.index + i as u16) as usize] = self.registers[i as usize];
+                    self.memory[(self.index + i as u16) as usize] = self.registers[i];
                 }
             },
             Instruction::LoadMemoryIntoRegisters { register } => {
                 for i in 0..=register {
-                    self.registers[i as usize] = self.memory[(self.index + i as u16) as usize];
+                    self.registers[i] = self.memory[(self.index + i as u16) as usize];
                 }
             },
             Instruction::UnknownInstruction => panic!(),
@@ -532,7 +532,7 @@ mod test {
         assert_eq!(cpu.pc, 0x300);
 
         cpu.execute(Instruction::LoadByteIntoRegister { register: 0, byte: 0xAB });
-        assert_eq!(cpu.registers[0], 0xAB);
+        assert_eq!(cpu.registers[0_u8], 0xAB);
 
         cpu.execute(Instruction::ReturnFromSubroutine);
         assert_eq!(cpu.pc, 0x200);
@@ -566,22 +566,22 @@ mod test {
         }
 
         for i in 0..16 {
-            assert_eq!(cpu.registers[i as usize], i as u8 * 10);
+            assert_eq!(cpu.registers[i as u8], i as u8 * 10);
         }
 
         cpu.execute(Instruction::LoadByteIntoRegister { register: 0, byte: 255 });
 
-        assert_eq!(cpu.registers[0], 255);
+        assert_eq!(cpu.registers[0_u8], 255);
         for i in 1..16 {
-            assert_eq!(cpu.registers[i as usize], i as u8 * 10);
+            assert_eq!(cpu.registers[i as u8], i as u8 * 10);
         }
 
         cpu.execute(Instruction::LoadByteIntoRegister { register: 15, byte: 255 });
 
-        assert_eq!(cpu.registers[15], 255);
-        assert_eq!(cpu.registers[0], 255);
+        assert_eq!(cpu.registers[15_u8], 255);
+        assert_eq!(cpu.registers[0_u8], 255);
         for i in 1..15 {
-            assert_eq!(cpu.registers[i as usize], i as u8 * 10);
+            assert_eq!(cpu.registers[i as u8], i as u8 * 10);
         }
     }
 
@@ -590,9 +590,9 @@ mod test {
         let mut cpu = CHIP8::default();
         let register = 0xA;
         let byte = 0x10;
-        cpu.registers[register as usize] = 0x20;
+        cpu.registers[register] = 0x20;
         cpu.execute(Instruction::AddByteToRegister { register, byte });
-        assert_eq!(cpu.registers[register as usize], 0x30, "Byte was not correctly added to the register.");
+        assert_eq!(cpu.registers[register], 0x30, "Byte was not correctly added to the register.");
     }
 
     #[test]
@@ -600,11 +600,11 @@ mod test {
         let mut cpu = CHIP8::default();
         let register1 = 0xA;
         let register2 = 0xB;
-        cpu.registers[register1 as usize] = 0x20;
-        cpu.registers[register2 as usize] = 0x10;
+        cpu.registers[register1] = 0x20;
+        cpu.registers[register2] = 0x10;
         cpu.execute(Instruction::AddRegisters { register1, register2 });
-        assert_eq!(cpu.registers[register1 as usize], 0x30, "Registers were not correctly added.");
-        assert_eq!(cpu.registers[0xF], 0, "Overflow flag should be unset.");
+        assert_eq!(cpu.registers[register1], 0x30, "Registers were not correctly added.");
+        assert_eq!(cpu.registers[0xF_u8], 0, "Overflow flag should be unset.");
     }
 
     #[test]
@@ -612,11 +612,11 @@ mod test {
         let mut cpu = CHIP8::default();
         let register1 = 0xA;
         let register2 = 0xB;
-        cpu.registers[register1 as usize] = 0x20;
-        cpu.registers[register2 as usize] = 0x10;
+        cpu.registers[register1] = 0x20;
+        cpu.registers[register2] = 0x10;
         cpu.execute(Instruction::SubRegisters { register1, register2 });
-        assert_eq!(cpu.registers[register1 as usize], 0x10, "Registers were not correctly subtracted.");
-        assert_eq!(cpu.registers[0xF], 1, "Borrow flag should be set.");
+        assert_eq!(cpu.registers[register1], 0x10, "Registers were not correctly subtracted.");
+        assert_eq!(cpu.registers[0xF_u8], 1, "Borrow flag should be set.");
     }
 
     #[test]
@@ -624,7 +624,7 @@ mod test {
         let mut cpu = CHIP8::default();
         let register = 0xA;
         for i in 0..=register {
-            cpu.registers[i as usize] = i as u8;
+            cpu.registers[i] = i as u8;
         }
         cpu.index = 0x200;
         cpu.execute(Instruction::LoadRegistersIntoMemory { register });
@@ -658,20 +658,20 @@ mod test {
         assert_eq!(cpu.pc, 0x300);
 
         cpu.execute(Instruction::LoadByteIntoRegister { register: 1, byte: 0x05 });
-        assert_eq!(cpu.registers[0x1], 0x05);
+        assert_eq!(cpu.registers[0x1_u8], 0x05);
 
         cpu.execute(Instruction::LoadByteIntoRegister { register: 2, byte: 0x06 });
-        assert_eq!(cpu.registers[0x2], 0x06);
+        assert_eq!(cpu.registers[0x2_u8], 0x06);
 
         cpu.execute(Instruction::AddRegisters { register1: 1, register2: 2 });
-        assert_eq!(cpu.registers[0x1], 0x0B);
+        assert_eq!(cpu.registers[0x1_u8], 0x0B);
 
-        assert_eq!(cpu.registers[0xF], 0x00);
+        assert_eq!(cpu.registers[0xF_u8], 0x00);
 
         cpu.execute(Instruction::SubRegisters { register1: 1, register2: 2 });
-        assert_eq!(cpu.registers[0x1], 0x05);
+        assert_eq!(cpu.registers[0x1_u8], 0x05);
 
-        assert_eq!(cpu.registers[0xF], 0x01); // 1 - 6
+        assert_eq!(cpu.registers[0xF_u8], 0x01); // 1 - 6
 
         cpu.execute(Instruction::LoadRegistersIntoMemory { register: 1 });
         assert_eq!(cpu.memory[(cpu.index + 1) as usize], 0x05);
