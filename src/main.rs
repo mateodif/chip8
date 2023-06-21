@@ -10,15 +10,15 @@ use crate::chip8::CHIP8;
 fn main() {
     let mut chip = CHIP8::default();
     chip.load_font();
-    let path = Path::new("./resources/test_opcode.ch8");
+    let path = Path::new("./resources/ibm_logo.ch8");
     chip.load_from_file(&path);
 
     let sdl_context = sdl2::init().unwrap();
     let video_subsystem = sdl_context.video().unwrap();
 
     let window = video_subsystem.window("CHIP-8",
-                                        (chip8::DISPLAY_HEIGHT * 10) as u32,
-                                        (chip8::DISPLAY_WIDTH * 10) as u32)
+                                        (chip8::DISPLAY_WIDTH * 10) as u32,
+                                        (chip8::DISPLAY_HEIGHT * 10) as u32)
                                 .position_centered()
                                 .build()
                                 .unwrap();
@@ -48,8 +48,8 @@ fn main() {
 
         canvas.set_draw_color(Color::RGB(33, 41, 70));
 
-        for (x, row) in chip.get_display().iter().enumerate() {
-            for (y, &pixel) in row.iter().enumerate() {
+        for (y, row) in chip.get_display().iter().enumerate() {
+            for (x, &pixel) in row.iter().enumerate() {
                 if pixel == 1 {
                     canvas.draw_point((x as i32, y as i32)).unwrap();
                 }
@@ -59,6 +59,6 @@ fn main() {
         canvas.present();
 
         // 60 FPS
-        std::thread::sleep(std::time::Duration::new(0, 1_000_000_000u32 / 30));
+        std::thread::sleep(std::time::Duration::new(0, 1_000_000_000u32 / 60));
     }
 }

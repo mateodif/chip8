@@ -7,8 +7,8 @@ use rand::Rng;
 use sdl2::keyboard::Keycode;
 
 pub const MEMORY_SIZE: usize = 4 * 1024; // 0x1000 directions, from 0x0 to 0xFFF.
-pub const DISPLAY_HEIGHT: usize = 64;
-pub const DISPLAY_WIDTH: usize = 32;
+pub const DISPLAY_WIDTH: usize = 64;
+pub const DISPLAY_HEIGHT: usize = 32;
 pub const REGISTER_SIZE: usize = 16;
 pub const PROGRAM_MEMORY_START: usize = 0x200; // Programs usually start a 0x200.
 
@@ -303,24 +303,24 @@ impl CHIP8 {
                 self.registers[register as usize] = byte & randint;
             },
             Instruction::DrawSprite { register1, register2, nibble } => {
-                let coord_x = (self.registers[register1 as usize] & (DISPLAY_WIDTH - 1) as u8) as usize;
-                let coord_y = (self.registers[register2 as usize] & (DISPLAY_HEIGHT - 1) as u8) as usize;
+                let coord_x = self.registers[register1 as usize] % DISPLAY_WIDTH as u8;
+                let coord_y = self.registers[register2 as usize] % DISPLAY_HEIGHT as u8;
                 self.registers[0xF as usize] = 0;
 
                 for byte in 0..(nibble as usize) {
-                    let y = (coord_y + byte) % DISPLAY_HEIGHT;
+                    let y = (coord_y as usize + byte) % DISPLAY_HEIGHT;
                     let sprite_byte = self.memory[self.index as usize + byte];
 
                     for bit in 0..8 {
-                        let x = (coord_x + bit) % DISPLAY_WIDTH;
+                        let x = (coord_x as usize + bit) % DISPLAY_WIDTH;
                         let sprite_pixel = (sprite_byte >> (7 - bit)) & 1;
-                        let display_pixel = self.display[x][y];
 
-                        self.display[x][y] ^= sprite_pixel;
-
-                        if display_pixel == 1 && sprite_pixel == 1 {
+                        if self.display[y][x] == 1 && sprite_pixel == 1 {
                             self.registers[0xF as usize] = 1;
                         }
+
+                        self.display[y][x] ^= sprite_pixel;
+
                     }
                 }
             },
