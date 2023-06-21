@@ -5,6 +5,7 @@ use sdl2::pixels::Color;
 use sdl2::event::Event;
 
 pub mod chip8;
+pub mod types;
 use crate::chip8::CHIP8;
 
 fn main() {
