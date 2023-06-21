@@ -1,5 +1,6 @@
 #![allow(dead_code)]
 #![allow(unused_variables)]
+use crate::types::Registers;
 use std::default::Default;
 use std::fs::read;
 use std::ops::Add;
@@ -10,7 +11,6 @@ use std::ops::Shl;
 use std::ops::Shr;
 use std::ops::Sub;
 use std::path::Path;
-
 pub const MEMORY_SIZE: usize = 4 * 1024; // 0x1000 directions, from 0x0 to 0xFFF.
 pub const DISPLAY_SIZE: usize = 64 * 32;
 pub const REGISTER_SIZE: usize = 16;
@@ -48,7 +48,7 @@ fn address_from_nibbles(a: u8, b: u8, c: u8) -> u16 {
 pub struct CHIP8 {
     memory: [u8; MEMORY_SIZE],
     display: [u8; DISPLAY_SIZE],
-    registers: [u8; REGISTER_SIZE],
+    registers: Registers,
     stack: Vec<u16>,
     pc: u16,
     sp: u8,
@@ -62,7 +62,7 @@ impl Default for CHIP8 {
         CHIP8 {
             memory: [0u8; MEMORY_SIZE],
             display: [0u8; DISPLAY_SIZE],
-            registers: [0u8; REGISTER_SIZE],
+            registers: Registers([0u8; REGISTER_SIZE]),
             stack: Vec::new(),
             pc: 0x0,
             sp: 0x0,
@@ -122,15 +122,15 @@ impl CHIP8 {
     fn jump(&mut self, address: u8) {}
 
     fn set_register_to_immediate(&mut self, r: u8, n: u8) {
-        self.registers[r as usize] = n;
+        self.registers[r] = n;
     }
 
     fn sum_register_with_immediate(&mut self, r: u8, n: u8) {
-        self.registers[r as usize] += n;
+        self.registers[r] += n;
     }
 
     fn set_register_from_register(&mut self, r1: u8, r2: u8, op: fn(u8, u8) -> u8) {
-        self.registers[r1 as usize] = op(self.registers[r1 as usize], self.registers[r2 as usize]);
+        self.registers[r1] = op(self.registers[r1], self.registers[r2]);
     }
 
     fn return_from_sub_routine(&mut self) {
@@ -289,7 +289,7 @@ mod test {
                 cpu.load_from_slice(&program, None);
                 cpu.execute();
                 assert_eq!(cpu.pc, 0x202);
-                assert_eq!(cpu.registers[reg_x as usize], cpu.registers[reg_y as usize]);
+                assert_eq!(cpu.registers[reg_x], cpu.registers[reg_y]);
             }
         }
     }
@@ -305,7 +305,7 @@ mod test {
                 cpu.load_from_slice(&program, None);
                 cpu.execute();
                 assert_eq!(cpu.pc, 0x202);
-                assert_eq!(cpu.registers[reg_x as usize], expected_val);
+                assert_eq!(cpu.registers[reg_x], expected_val);
             }
         }
     }
@@ -313,17 +313,17 @@ mod test {
     #[test]
     fn test_sum_register_with_immediate() {
         let mut cpu = CHIP8::default();
-        for reg_x in 0x0..=0xF {
+        for reg_x in 0x0_u8..=0xF_u8 {
             for nibbles in (0x0..=0xF).permutations(2).collect_vec() {
                 cpu.pc = 0x200;
                 let [nibble_1, nibble_2] = &nibbles[..] else {panic!("Permutations are working weirdly")};
-                let expected_val = cpu.registers[reg_x as usize]
-                    .wrapping_add(from_low_and_high(*nibble_1, *nibble_2));
+                let expected_val =
+                    cpu.registers[reg_x].wrapping_add(from_low_and_high(*nibble_1, *nibble_2));
                 let program = [0x60 + reg_x, expected_val];
                 cpu.load_from_slice(&program, None);
                 cpu.execute();
                 assert_eq!(cpu.pc, 0x202);
-                assert_eq!(cpu.registers[reg_x as usize], expected_val);
+                assert_eq!(cpu.registers[reg_x], expected_val);
             }
         }
     }
@@ -352,7 +352,10 @@ mod test {
                 address_from_nibbles(*nibble_1, *nibble_2, *nibble_3)
             );
             let ret_instruction = [0x0, 0xEE];
-            cpu.load_from_slice(&ret_instruction, Some(address_from_nibbles(*nibble_1, *nibble_2, *nibble_3)));
+            cpu.load_from_slice(
+                &ret_instruction,
+                Some(address_from_nibbles(*nibble_1, *nibble_2, *nibble_3)),
+            );
             cpu.execute();
             assert_eq!(cpu.pc, 0x202);
             cpu.sp = 0;
