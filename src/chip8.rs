@@ -5,7 +5,8 @@ use std::default::Default;
 use std::fs::read;
 use std::path::Path;
 use rand::Rng;
-use sdl2::keyboard::Keycode;
+use sdl2::keyboard::Scancode;
+use sdl2::rect::Point;
 pub const MEMORY_SIZE: usize = 4 * 1024; // 0x1000 directions, from 0x0 to 0xFFF.
 pub const DISPLAY_WIDTH: usize = 64;
 pub const DISPLAY_HEIGHT: usize = 32;
@@ -93,7 +94,7 @@ pub struct CHIP8 {
     index: u16,
     delay_timer: u8,
     sound_timer: u8,
-    keycode: Option<sdl2::keyboard::Keycode>, // :^)
+    pressed_key: Option<u8>, // :^)
 }
 
 impl Default for CHIP8 {
@@ -108,7 +109,7 @@ impl Default for CHIP8 {
             index: 0x0,
             delay_timer: 0x0,
             sound_timer: 0x0,
-            keycode: None
+            pressed_key: None
         }
     }
 }
@@ -158,17 +159,14 @@ impl CHIP8 {
         }
     }
 
-    pub fn skip(&mut self) {
-        self.pc += 2;
-    }
-
     pub fn fetch(&mut self) -> Instruction {
         let upc = self.pc as usize;
         let [first_nibble, second_nibble] = low_and_high_nibbles(self.memory[upc]);
         let [third_nibble, fourth_nibble] = low_and_high_nibbles(self.memory[upc + 1]);
         let hex = [first_nibble, second_nibble, third_nibble, fourth_nibble];
+
         self.pc += 2;
-        println!("{:X?}", hex);
+
         match hex {
             [0x0, 0x0, 0xE, 0x0] => Instruction::ClearScreen,
             [0x0, 0x0, 0xE, 0xE] => Instruction::ReturnFromSubroutine,
@@ -208,8 +206,33 @@ impl CHIP8 {
         }
     }
 
-    pub fn handle_keydown(&mut self, keycode: Option<Keycode>) {
-        self.keycode = keycode;
+    fn scancode_to_keypad(&mut self, scancode: Option<Scancode>) -> Option<u8> {
+        match scancode {
+            Some(Scancode::Num1) => Some(0x1),
+            Some(Scancode::Num2) => Some(0x2),
+            Some(Scancode::Num3) => Some(0x3),
+            Some(Scancode::Num4) => Some(0xC),
+            Some(Scancode::Q) => Some(0x4),
+            Some(Scancode::W) => Some(0x5),
+            Some(Scancode::E) => Some(0x6),
+            Some(Scancode::R) => Some(0xD),
+            Some(Scancode::A) => Some(0x7),
+            Some(Scancode::S) => Some(0x8),
+            Some(Scancode::D) => Some(0x9),
+            Some(Scancode::F) => Some(0xE),
+            Some(Scancode::Z) => Some(0xA),
+            Some(Scancode::X) => Some(0x0),
+            Some(Scancode::C) => Some(0xB),
+            Some(Scancode::V) => Some(0xF),
+            _ => None
+        }
+    }
+
+    pub fn handle_keydown(&mut self, scancode: Option<Scancode>) {
+        self.pressed_key = match self.pressed_key {
+            None => self.scancode_to_keypad(scancode),
+            _ => self.pressed_key,
+        }
     }
 
     pub fn execute(&mut self, instruction: Instruction) {
@@ -231,17 +254,17 @@ impl CHIP8 {
             },
             Instruction::SkipIfEqual { register, byte } => {
                 if self.registers[register] == byte {
-                    self.skip();
+                    self.pc += 2;
                 }
             },
             Instruction::SkipIfNotEqual { register, byte } => {
                 if self.registers[register] != byte {
-                    self.skip();
+                    self.pc += 2;
                 }
             },
             Instruction::SkipIfRegisterEqual { register1, register2 } => {
                 if self.registers[register1] == self.registers[register2] {
-                    self.skip();
+                    self.pc += 2;
                 }
             },
             Instruction::LoadByteIntoRegister { register, byte } => {
@@ -288,7 +311,7 @@ impl CHIP8 {
             },
             Instruction::SkipIfRegisterNotEqual { register1, register2 } => {
                 if self.registers[register1] != self.registers[register2] {
-                    self.skip();
+                    self.pc += 2;
                 }
             },
             Instruction::LoadAddressIntoIndex { address } => {
@@ -314,45 +337,50 @@ impl CHIP8 {
                     for bit in 0..8 {
                         let x = (coord_x as usize + bit) % DISPLAY_WIDTH;
                         let sprite_pixel = (sprite_byte >> (7 - bit)) & 1;
-
                         if self.display[y][x] == 1 && sprite_pixel == 1 {
                             self.registers[0xF_u8] = 1;
                         }
-
                         self.display[y][x] ^= sprite_pixel;
-
                     }
                 }
             },
             Instruction::SkipIfKeyPressed { register } => {
-                match self.keycode {
+                match self.pressed_key {
                     Some(keycode) => {
-                        if self.registers[register] == keycode as u8 {
-                            self.skip();
+                        println!("Skip if key pressed. Expecting key {:?}, got {:?}", self.registers[register], keycode);
+                        if self.registers[register] == keycode {
+                            self.pc += 2;
                         }
+                        self.pressed_key = None;
                     },
-                    _ => {},
+                    _ => self.pressed_key = None,
                 }
             },
             Instruction::SkipIfKeyNotPressed { register } => {
-                match self.keycode {
+                match self.pressed_key {
                     Some(keycode) => {
-                        if self.registers[register] != keycode as u8 {
-                            self.skip();
+                        println!("Skip if key not pressed. Expecting key {:?}, got {:?}", self.registers[register], keycode);
+                        if self.registers[register] != keycode {
+                            self.pc += 2;
                         }
+                        self.pressed_key = None;
                     },
-                    _ => {},
+                    _ => self.pressed_key = None,
                 }
             },
             Instruction::LoadDelayTimerIntoRegister { register } => {
                 self.registers[register] = self.delay_timer;
             },
             Instruction::WaitForKeyPress { register } => {
-                match self.keycode {
+                match self.pressed_key {
                     Some(keycode) => {
-                        self.registers[register] = keycode as u8;
+                        println!("Wait for key. Key: {:?}", keycode);
+                        self.registers[register] = keycode;
+                        self.pressed_key = None;
                     },
-                    _ => {},
+                    _ => {
+                        self.pc -= 2;
+                    },
                 }
             },
             Instruction::LoadRegisterIntoDelayTimer { register } => {
@@ -389,9 +417,16 @@ impl CHIP8 {
         }
     }
 
-    pub fn get_display(&mut self) -> [[u8; DISPLAY_WIDTH]; DISPLAY_HEIGHT] {
-        self.display
+    pub fn get_pixels_to_draw(&mut self) -> Vec<Point> {
+        self.display.iter().enumerate()
+                           .flat_map(|(y, row)| {
+                               row.iter().enumerate()
+                                         .filter(|&(_, &pixel)| pixel == 1)
+                                         .map(move |(x, _)| Point::new(x as i32, y as i32))
+                           })
+                           .collect()
     }
+
 }
 
 #[cfg(test)]

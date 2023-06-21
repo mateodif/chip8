@@ -3,10 +3,23 @@
 use std::path::Path;
 use sdl2::pixels::Color;
 use sdl2::event::Event;
+use sdl2::keyboard::Scancode;
 
 pub mod chip8;
 pub mod types;
 use crate::chip8::CHIP8;
+
+fn get_scancode(event_pump: &mut sdl2::EventPump) -> Option<Scancode> {
+    for event in event_pump.poll_iter() {
+        match event {
+            Event::KeyDown { scancode: Some(scancode), .. } => {
+                return Some(scancode);
+            },
+            _ => continue,
+        }
+    }
+    None
+}
 
 fn main() {
     let mut chip = CHIP8::default();
@@ -30,36 +43,24 @@ fn main() {
     let mut events = sdl_context.event_pump().unwrap();
 
     loop {
-        canvas.set_draw_color(Color::RGB(97, 134, 169));
+        canvas.set_draw_color(Color::BLACK);
         canvas.clear();
 
-        let mut keydown_event = None;
-
-        for event in events.poll_iter() {
-            match event {
-                Event::KeyDown { keycode: Some(keycode), .. } => keydown_event = Some(keycode),
-                _ => {}
-            }
-        }
-
         let instruction = chip.fetch();
-        println!("{:?}", instruction);
-        chip.handle_keydown(keydown_event);
+
+        let scancode: Option<Scancode> = get_scancode(&mut events);
+
+        chip.handle_keydown(scancode);
+
+        // println!("{:?}", instruction);
+
         chip.execute(instruction);
 
-        canvas.set_draw_color(Color::RGB(33, 41, 70));
-
-        for (y, row) in chip.get_display().iter().enumerate() {
-            for (x, &pixel) in row.iter().enumerate() {
-                if pixel == 1 {
-                    canvas.draw_point((x as i32, y as i32)).unwrap();
-                }
-            }
-        }
+        canvas.set_draw_color(Color::GREEN);
+        canvas.draw_points(chip.get_pixels_to_draw().as_slice()).unwrap();
 
         canvas.present();
 
-        // 60 FPS
-        std::thread::sleep(std::time::Duration::new(0, 1_000_000_000u32 / 60));
+        std::thread::sleep(std::time::Duration::new(0, 1_000_000_000u32 / 100));
     }
 }
