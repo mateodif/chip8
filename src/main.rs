@@ -1,3 +1,5 @@
+
+
 #![feature(bigint_helper_methods)]
 
 use std::path::Path;
@@ -9,11 +11,16 @@ pub mod chip8;
 pub mod types;
 use crate::chip8::CHIP8;
 
-fn get_scancode(event_pump: &mut sdl2::EventPump) -> Option<Scancode> {
+pub enum Kbd {
+    Scode(Scancode),
+    Quit
+}
+fn get_scancode(event_pump: &mut sdl2::EventPump) -> Option<Kbd> {
     for event in event_pump.poll_iter() {
         match event {
+            Event::Quit { .. } => return Some(Kbd::Quit),
             Event::KeyDown { scancode: Some(scancode), .. } => {
-                return Some(scancode);
+                return Some(Kbd::Scode(scancode));
             },
             _ => continue,
         }
@@ -42,15 +49,22 @@ fn main() {
 
     let mut events = sdl_context.event_pump().unwrap();
 
-    loop {
+    'main:loop {
         canvas.set_draw_color(Color::BLACK);
         canvas.clear();
 
         let instruction = chip.fetch();
 
-        let scancode: Option<Scancode> = get_scancode(&mut events);
-
-        chip.handle_keydown(scancode);
+        let scancode: Option<Kbd> = get_scancode(&mut events);
+        match scancode {
+            Some(Kbd::Quit) => break 'main,
+            Some(Kbd::Scode(polled_scode)) => {
+                chip.handle_keydown(Some(polled_scode));
+            }
+            None => {
+                chip.handle_keydown(None);
+            }
+        }
 
         // println!("{:?}", instruction);
 
