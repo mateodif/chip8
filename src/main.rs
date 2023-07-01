@@ -1,11 +1,8 @@
-
-
 #![feature(bigint_helper_methods)]
-
-use std::path::Path;
-use sdl2::pixels::Color;
 use sdl2::event::Event;
 use sdl2::keyboard::Scancode;
+use sdl2::pixels::Color;
+use std::path::Path;
 
 pub mod chip8;
 pub mod types;
@@ -13,15 +10,18 @@ use crate::chip8::CHIP8;
 
 pub enum Kbd {
     Scode(Scancode),
-    Quit
+    Quit,
 }
 fn get_scancode(event_pump: &mut sdl2::EventPump) -> Option<Kbd> {
     for event in event_pump.poll_iter() {
         match event {
             Event::Quit { .. } => return Some(Kbd::Quit),
-            Event::KeyDown { scancode: Some(scancode), .. } => {
+            Event::KeyDown {
+                scancode: Some(scancode),
+                ..
+            } => {
                 return Some(Kbd::Scode(scancode));
-            },
+            }
             _ => continue,
         }
     }
@@ -37,19 +37,22 @@ fn main() {
     let sdl_context = sdl2::init().unwrap();
     let video_subsystem = sdl_context.video().unwrap();
 
-    let window = video_subsystem.window("CHIP-8",
-                                        (chip8::DISPLAY_WIDTH * 10) as u32,
-                                        (chip8::DISPLAY_HEIGHT * 10) as u32)
-                                .position_centered()
-                                .build()
-                                .unwrap();
+    let window = video_subsystem
+        .window(
+            "CHIP-8",
+            (chip8::DISPLAY_WIDTH * 10) as u32,
+            (chip8::DISPLAY_HEIGHT * 10) as u32,
+        )
+        .position_centered()
+        .build()
+        .unwrap();
 
     let mut canvas = window.into_canvas().build().unwrap();
     canvas.set_logical_size(64, 32).unwrap();
 
     let mut events = sdl_context.event_pump().unwrap();
 
-    'main:loop {
+    'main: loop {
         canvas.set_draw_color(Color::BLACK);
         canvas.clear();
 
@@ -71,7 +74,9 @@ fn main() {
         chip.execute(instruction);
 
         canvas.set_draw_color(Color::GREEN);
-        canvas.draw_points(chip.get_pixels_to_draw().as_slice()).unwrap();
+        canvas
+            .draw_points(chip.get_pixels_to_draw().as_slice())
+            .unwrap();
 
         canvas.present();
 
