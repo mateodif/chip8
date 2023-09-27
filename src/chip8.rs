@@ -229,10 +229,7 @@ impl CHIP8 {
     }
 
     pub fn handle_keydown(&mut self, scancode: Option<Scancode>) {
-        self.pressed_key = match self.pressed_key {
-            None => self.scancode_to_keypad(scancode),
-            _ => self.pressed_key,
-        }
+        self.pressed_key = self.scancode_to_keypad(scancode);
     }
 
     pub fn execute(&mut self, instruction: Instruction) {
@@ -351,9 +348,8 @@ impl CHIP8 {
                         if self.registers[register] == keycode {
                             self.pc += 2;
                         }
-                        self.pressed_key = None;
                     },
-                    _ => self.pressed_key = None,
+                    _ => {}
                 }
             },
             Instruction::SkipIfKeyNotPressed { register } => {
@@ -363,9 +359,8 @@ impl CHIP8 {
                         if self.registers[register] != keycode {
                             self.pc += 2;
                         }
-                        self.pressed_key = None;
                     },
-                    _ => self.pressed_key = None,
+                    _ => {},
                 }
             },
             Instruction::LoadDelayTimerIntoRegister { register } => {
@@ -376,7 +371,6 @@ impl CHIP8 {
                     Some(keycode) => {
                         println!("Wait for key. Key: {:?}", keycode);
                         self.registers[register] = keycode;
-                        self.pressed_key = None;
                     },
                     _ => {
                         self.pc -= 2;

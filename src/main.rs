@@ -12,6 +12,7 @@ pub enum Kbd {
     Scode(Scancode),
     Quit,
 }
+
 fn get_scancode(event_pump: &mut sdl2::EventPump) -> Option<Kbd> {
     for event in event_pump.poll_iter() {
         match event {
@@ -64,9 +65,7 @@ fn main() {
             Some(Kbd::Scode(polled_scode)) => {
                 chip.handle_keydown(Some(polled_scode));
             }
-            None => {
-                chip.handle_keydown(None);
-            }
+            None => {}
         }
 
         // println!("{:?}", instruction);
@@ -80,6 +79,6 @@ fn main() {
 
         canvas.present();
 
-        std::thread::sleep(std::time::Duration::new(0, 1_000_000_000u32 / 100));
+        std::thread::sleep(std::time::Duration::new(0, 1_000_000_000u32 / 300));
     }
 }
