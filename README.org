@@ -1,0 +1,14 @@
+#+title: Readme
+
+* CHIP8
+
+[[./resources/breakout.gif]]
+
+A small, barebones CHIP-8 emulator made in Rust.
+
+* TO-DO
+
+- Implement sound
+- Refactor the render logic
+- Implement SUPER-CHIP
+- An immense amount of other things
